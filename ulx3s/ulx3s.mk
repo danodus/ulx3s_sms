@@ -7,11 +7,11 @@ BUILDDIR = bin
 compile: $(BUILDDIR)/toplevel.bit
 
 prog: $(BUILDDIR)/toplevel.bit
-	ujprog $^
+	fujprog $^
 
 $(BUILDDIR)/toplevel.json: $(VERILOG)
 	mkdir -p $(BUILDDIR)
-	yosys -p "synth_ecp5 -json $@" $^
+	yosys -p "synth_ecp5 -top sms -json $@" $^
 
 $(BUILDDIR)/%.config: $(PIN_DEF) $(BUILDDIR)/toplevel.json
 	nextpnr-ecp5 --${DEVICE} --package CABGA381 --timing-allow-fail --freq 25 --textcfg  $@ --json $(filter-out $<,$^) --lpf $<

@@ -13,8 +13,16 @@ module sms
   // Switches
   input [3:0]   sw,
   // HDMI
+`ifdef SYNTHESIS
   output [3:0]  gpdi_dp,
   output [3:0]  gpdi_dn,
+`else // SYNTHESIS
+    output       vga_hsync,
+    output       vga_vsync,
+    output [7:0] vga_r,
+    output [7:0] vga_g,
+    output [7:0] vga_b,  
+`endif // SYNTHESIS
   // Keyboard
   output        usb_fpga_pu_dp,
   output        usb_fpga_pu_dn,
@@ -108,13 +116,13 @@ module sms
   reg [15:0] diag16;
 
   generate 
-    genvar i;
+    genvar i2;
     if (c_diag) begin
-      for(i = 0; i < 4; i = i+1) begin
-        assign gn[17-i] = diag16[8+i];
-        assign gp[17-i] = diag16[12+i];
-        assign gn[24-i] = diag16[i];
-        assign gp[24-i] = diag16[4+i];
+      for(i2 = 0; i2 < 4; i2 = i2+1) begin
+        assign gn[17-i2] = diag16[8+i2];
+        assign gp[17-i2] = diag16[12+i2];
+        assign gn[24-i2] = diag16[i2];
+        assign gp[24-i2] = diag16[4+i2];
       end
     end
   endgenerate
@@ -150,6 +158,7 @@ module sms
   // ===============================================================
   // System Clock generation
   // ===============================================================
+`ifdef SYNTHESIS
   wire clk_sdram_locked;
   wire [3:0] clocks;
   ecp5pll
@@ -170,7 +179,11 @@ module sms
   wire clk_vga   = clocks[1];
   wire cpuClock  = clocks[1];
   wire clk_sdram = clocks[2];
-  wire sdram_clk = clocks[3]; // phase shifted for chip
+  assign sdram_clk = clocks[3]; // phase shifted for chip
+`else // SYNTHESIS
+  wire clk_vga   = clk_25mhz;
+  wire cpuClock  = clk_25mhz;
+`endif // SYNTHESIS
 
   // ===============================================================
   // Joystick for OSD control and games
@@ -180,6 +193,7 @@ module sms
   always @(posedge cpuClock)
     R_btn_joy <= btn;
 
+`ifdef SYNTHESIS
   // ===============================================================
   // SPI Slave for RAM and CPU control
   // ===============================================================
@@ -221,11 +235,21 @@ module sms
       R_cpu_control <= spi_ram_di;
     end
   end
+`else // SYNTHESIS
+  wire [7:0] R_cpu_control = 8'd0;
+  wire spi_ram_wr = 1'd0;
+  wire [31:0] spi_ram_addr = 32'd0;
+  wire  [7:0] spi_ram_di = 8'd0;
+`endif // SYNTHESIS
 
   // ===============================================================
   // Reset generation
   // ===============================================================
+  `ifdef SYNTHESIS
   reg [15:0] pwr_up_reset_counter = 0;
+  `else // SYNTHESIS
+  reg [2:0] pwr_up_reset_counter = 0;
+  `endif // SYNTHESIS
   wire       pwr_up_reset_n = &pwr_up_reset_counter;
 
   always @(posedge cpuClock) begin
@@ -277,11 +301,14 @@ module sms
   // ===============================================================
   // GAME ROM (uses SDRAM)
   // ===============================================================
-  wire sdram_d_wr;
-  wire [15:0] sdram_d_in, sdram_d_out;
+
   wire [23:0] sdramAddress = cpuAddress[15:14] == 0 ? {slot0, cpuAddress[13:0]} :
                     cpuAddress[15:14] == 1 ? {slot1, cpuAddress[13:0]} :
                     cpuAddress[15:14] == 2 ? {slot2, cpuAddress[13:0]} : cpuAddress;
+
+  `ifdef SYNTHESIS
+  wire sdram_d_wr;
+  wire [15:0] sdram_d_in, sdram_d_out;
 
   assign sdram_d = sdram_d_wr ? sdram_d_out : 16'hzzzz;
   assign sdram_d_in = sdram_d;
@@ -315,6 +342,21 @@ module sms
    .oeB(0),
    .doutB()
   );
+`else // SYNTHESIS
+  reg [7:0] game_rom [0:131071];
+  initial begin
+    integer file, r;
+    file = $fopen("cart.rom", "rb");
+    r = $fread(game_rom, file);
+    $display("Nb bytes read: %d", r);
+    $fclose(file);
+  end
+  assign romOut = game_rom[sdramAddress];
+  // always @(posedge cpuClock) begin
+  //   if (cpuAddress[15:14] < 3 && n_memRD == 1'b0 && r_mem_ctrl[3] == 1'b1)
+  //     $display("%x, %x", sdramAddress, romOut);
+  // end
+`endif // SYNTHESIS
   
   // ===============================================================
   // BIOS ROM
@@ -454,7 +496,7 @@ module sms
   // ===============================================================
   // SPI Slave for OSD display
   // ===============================================================
-
+`ifdef SYNTHESIS
   wire [7:0] osd_vga_r, osd_vga_g, osd_vga_b;
   wire osd_vga_hsync, osd_vga_vsync, osd_vga_blank;
   spi_osd
@@ -491,6 +533,16 @@ module sms
     .gpdi_dp(gpdi_dp),
     .gpdi_dn(gpdi_dn)
   );
+`else // SYNTHESIS
+
+    assign vga_hsync = hSync;
+    assign vga_vsync = vSync;
+    assign vga_r = red;
+    assign vga_g = green;
+    assign vga_b = blue;
+
+`endif // SYNTHESIS
+
   // ===============================================================
   // MEMORY READ/WRITE LOGIC
   // ===============================================================
@@ -551,7 +603,11 @@ module sms
       cpuClockCount <= cpuClockCount + 1;
   end
 
+`ifdef SYNTHESIS
   assign cpuClockEnable = cpuClockCount[2]; // 3.5Mhz
+`else // SYNTHESIS
+  assign cpuClockEnable = cpuClockCount[0];
+`endif // SYNTHESIS
 
   // ===============================================================
   // Audio
@@ -586,6 +642,7 @@ module sms
   // ===============================================================
   // Diagnostic LCD 
   // ===============================================================
+`ifdef SYNTHESIS
 
   generate
   if(c_lcd_hex)
@@ -653,6 +710,8 @@ module sms
   assign oled_csn = 1; // 7-pin ST7789: oled_csn is connected to BLK (backlight enable pin)
   end
   endgenerate
+
+`endif // SYNTHESIS
 
   // ===============================================================
   // Leds
