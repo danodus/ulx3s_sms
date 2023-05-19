@@ -2,5 +2,8 @@ bin/
 roms/msx.mem
 roms/systemroms/
 roms/systemroms.zip
+sim/logs/
+sim/obj_dir
+sim/cart.rom
 
 

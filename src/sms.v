@@ -13,8 +13,16 @@ module sms
   // Switches
   input [3:0]   sw,
   // HDMI
+`ifdef SYNTHESIS
   output [3:0]  gpdi_dp,
   output [3:0]  gpdi_dn,
+`else // SYNTHESIS
+    output       vga_hsync,
+    output       vga_vsync,
+    output [7:0] vga_r,
+    output [7:0] vga_g,
+    output [7:0] vga_b,  
+`endif // SYNTHESIS
   // USB HID Host
   inout	        usb_fpga_bd_dn,
   inout	        usb_fpga_bd_dp,
@@ -114,13 +122,13 @@ module sms
   reg [15:0] diag16;
 
   generate 
-    genvar i;
+    genvar i2;
     if (c_diag) begin
-      for(i = 0; i < 4; i = i+1) begin
-        assign gn[17-i] = diag16[8+i];
-        assign gp[17-i] = diag16[12+i];
-        assign gn[24-i] = diag16[i];
-        assign gp[24-i] = diag16[4+i];
+      for(i2 = 0; i2 < 4; i2 = i2+1) begin
+        assign gn[17-i2] = diag16[8+i2];
+        assign gp[17-i2] = diag16[12+i2];
+        assign gn[24-i2] = diag16[i2];
+        assign gp[24-i2] = diag16[4+i2];
       end
     end
   endgenerate
@@ -155,6 +163,7 @@ module sms
   // ===============================================================
   // System Clock generation
   // ===============================================================
+`ifdef SYNTHESIS
   wire clk_sdram_locked;
   wire [3:0] clocks;
   ecp5pll
@@ -175,11 +184,16 @@ module sms
   wire clk_vga   = clocks[1];
   wire cpuClock  = clocks[1];
   wire clk_sdram = clocks[2];
-  wire sdram_clk = clocks[3]; // phase shifted for chip
+  assign sdram_clk = clocks[3]; // phase shifted for chip
+`else // SYNTHESIS
+  wire clk_vga   = clk_25mhz;
+  wire cpuClock  = clk_25mhz;
+`endif // SYNTHESIS
 
   // ===============================================================
   // USB HID Host Clock generation
   // ===============================================================
+`ifdef SYNTHESIS
   wire clk_usb_locked;
   wire clk_usb;
   usb_pll ecp5pll_usb_inst
@@ -189,6 +203,7 @@ module sms
     .clk100(),
     .locked(clk_usb_locked)
   );
+`endif
  
   // ===============================================================
   // Joystick
@@ -201,24 +216,32 @@ module sms
   // ===============================================================
   // Reset generation
   // ===============================================================
+  `ifdef SYNTHESIS
   reg [15:0] pwr_up_reset_counter = 0;
+  `else // SYNTHESIS
+  reg [2:0] pwr_up_reset_counter = 0;
+  `endif // SYNTHESIS
   wire       pwr_up_reset_n = &pwr_up_reset_counter;
 
   always @(posedge cpuClock) begin
      if (!pwr_up_reset_n)
+`ifdef SYNTHESIS
        pwr_up_reset_counter <= (clk_sdram_locked && clk_usb_locked) ? pwr_up_reset_counter + 1 : 0;
+`else
+       pwr_up_reset_counter <= pwr_up_reset_counter + 1;
+`endif
   end
 
   // ===============================================================
   // USB Gamepad
   // ===============================================================
-
   wire [1:0] usb_type;
   wire game_l, game_r, game_u, game_d, game_a, game_b, game_x, game_y;
   wire game_sel, game_sta;
 
   wire usb_reset = !pwr_up_reset_n | !btn[0];
 
+`ifdef SYNTHESIS
   usb_hid_host usb (
     .usbclk(clk_usb),
     .usbrst_n(!usb_reset),
@@ -233,6 +256,7 @@ module sms
     .game_sel(game_sel), .game_sta(game_sta),
     .conerr(), .dbg_hid_report()
   );
+`endif
 
   assign usb_gamepad_btn = {game_r, game_l, game_d, game_u, game_b, game_a, 1'b0};
 
@@ -267,6 +291,7 @@ module sms
   wire [23:0] loader_addr;
   wire [7:0] loader_data;
 
+`ifdef SYNTHESIS
   // Power-up and the power button both return to the load phase.
   // The Z80 stays reset until the serial transfer checks out.
   wire loader_reset = !pwr_up_reset_n | !btn[0];
@@ -283,6 +308,9 @@ module sms
     .addrB(loader_addr),
     .dinB(loader_data)
   );
+`else
+  assign load_done = 1'b1;
+`endif
 
   reg n_hard_reset;
   always @(posedge cpuClock)
@@ -323,11 +351,14 @@ module sms
   // ===============================================================
   // GAME ROM (uses SDRAM)
   // ===============================================================
-  wire sdram_d_wr;
-  wire [15:0] sdram_d_in, sdram_d_out;
+
   wire [23:0] sdramAddress = cpuAddress[15:14] == 0 ? {slot0, cpuAddress[13:0]} :
                     cpuAddress[15:14] == 1 ? {slot1, cpuAddress[13:0]} :
                     cpuAddress[15:14] == 2 ? {slot2, cpuAddress[13:0]} : cpuAddress;
+
+  `ifdef SYNTHESIS
+  wire sdram_d_wr;
+  wire [15:0] sdram_d_in, sdram_d_out;
 
   assign sdram_d = sdram_d_wr ? sdram_d_out : 16'hzzzz;
   assign sdram_d_in = sdram_d;
@@ -361,6 +392,21 @@ module sms
    .oeB(0),
    .doutB()
   );
+`else // SYNTHESIS
+  reg [7:0] game_rom [0:131071];
+  initial begin
+    integer file, r;
+    file = $fopen("cart.rom", "rb");
+    r = $fread(game_rom, file);
+    $display("Nb bytes read: %d", r);
+    $fclose(file);
+  end
+  assign romOut = game_rom[sdramAddress];
+  // always @(posedge cpuClock) begin
+  //   if (cpuAddress[15:14] < 3 && n_memRD == 1'b0 && r_mem_ctrl[3] == 1'b1)
+  //     $display("%x, %x", sdramAddress, romOut);
+  // end
+`endif // SYNTHESIS
   
   // ===============================================================
   // BIOS ROM
@@ -500,6 +546,8 @@ module sms
     .diag(vga_diag)
   );
 
+`ifdef SYNTHESIS
+
   // Convert VGA to HDMI
   HDMI_out vga2dvid (
     .pixclk(clk_vga),
@@ -513,6 +561,16 @@ module sms
     .gpdi_dp(gpdi_dp),
     .gpdi_dn(gpdi_dn)
   );
+`else // SYNTHESIS
+
+    assign vga_hsync = hSync;
+    assign vga_vsync = vSync;
+    assign vga_r = red;
+    assign vga_g = green;
+    assign vga_b = blue;
+
+`endif // SYNTHESIS
+
   // ===============================================================
   // MEMORY READ/WRITE LOGIC
   // ===============================================================
