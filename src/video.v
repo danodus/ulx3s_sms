@@ -37,7 +37,7 @@ module video (
   output        sprite_collision,
   output        too_many_sprites,
   output        interrupt_flag,
-  output [4:0]  spritex,
+  output reg [4:0] spritex,
   input [7:0]   x_scroll,
   input [7:0]   y_scroll,
   input         disable_vert,
@@ -191,7 +191,6 @@ module video (
   // Sprite collision status data
   assign sprite_collision  = (sprite_count > 1);
   assign too_many_sprites = (num_sprites > 8);
-  reg [4:0] spritex;
 
   // Set CPU interrupt flag
   assign n_int = !INT;
@@ -249,7 +248,6 @@ module video (
 
   wire [2:0] x_scroll_pix = y < 16 && disable_horiz ? x_pix : x_pix - x_scroll[2:0];
 
-  wire [7:0] depth = (line240 ? 240 : line224 : 224 : 192);
   wire [7:0] y_limit = (lines240 | lines224) ? 255 : 223;
   wire [8:0] ys = y + r_y_scroll;
   wire [7:0] ysa = ys > y_limit ? ys - 224 : ys;
@@ -417,7 +415,7 @@ module video (
               vid_addr <= vid_addr + 1;
               bit_plane_next[x_scroll_pix - 3] <= vid_out;
             end else if (x_scroll_pix == 7) begin
-              for(i=0;i<4;i++) bit_plane[i] <= bit_plane_next[i];
+              for(i=0;i<4;i=i+1) bit_plane[i] <= bit_plane_next[i];
               h_flip <= second_index_byte[1];
               palette <= second_index_byte[3];
               back_priority = second_index_byte[4];
