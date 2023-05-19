@@ -343,7 +343,7 @@ module sms
    .doutB()
   );
 `else // SYNTHESIS
-  reg [7:0] game_rom [0:131071];
+  reg [7:0] game_rom [0:524287];  // max: 512kB
   initial begin
     integer file, r;
     file = $fopen("cart.rom", "rb");
