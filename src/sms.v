@@ -140,8 +140,7 @@ module sms
   wire          n_kbdCS;
   wire          n_int;
 
-  reg [2:0]     cpuClockCount;
-  wire          cpuClockEnable;
+  reg           cpuClockEnable = 0;
   reg           cpuClockEnable1; 
   wire          cpuClockEdge = cpuClockEnable && !cpuClockEnable1;
   wire [7:0]    ramOut;
@@ -504,18 +503,36 @@ module sms
   end
   
   // ===============================================================
-  // CPU clock enable
+  // CPU clock
   // ===============================================================
-  
+  // An SMS line is exactly 228 T-states. A line here is two VGA lines,
+  // 1600 pixel clocks, so a divide-by-7 (228.57 T-states) walks relative
+  // to the raster. Hang-On samples the V counter from the line IRQ and
+  // indexes the road scroll by that value; a walking phase moves the
+  // sample onto the next line and the curve flickers.
+  // 228 edges in 1600 clocks is 56 periods of 7 plus one period of 8 in
+  // every 400 clocks. The enable stays high for the last 3 clocks of
+  // every period, matching the old duty cycle the PSG and SDRAM use.
+  reg [2:0] cpuSub = 0;
+  reg [5:0] cpuSlot = 0; // 0..56 within each 400-clock group
+  wire      cpuLong = (cpuSlot == 6'd0);
+  wire [2:0] cpuLast = cpuLong ? 3'd7 : 3'd6;
+  wire [2:0] cpuHighAt = cpuLong ? 3'd5 : 3'd4;
+
   always @(posedge cpuClock) begin
     cpuClockEnable1 <= cpuClockEnable;
-    if(cpuClockCount == 6) // divide by 7: 25MHz/7 = 3.571MHz
-      cpuClockCount <= 0;
-    else
-      cpuClockCount <= cpuClockCount + 1;
+    if (cpuSub == cpuLast) begin
+      cpuSub <= 3'd0;
+      cpuClockEnable <= 1'b0;
+      if (cpuSlot == 6'd56)
+        cpuSlot <= 6'd0;
+      else
+        cpuSlot <= cpuSlot + 6'd1;
+    end else begin
+      cpuSub <= cpuSub + 3'd1;
+      cpuClockEnable <= ((cpuSub + 3'd1) >= cpuHighAt);
+    end
   end
-
-  assign cpuClockEnable = cpuClockCount[2]; // 3.5Mhz
 
   // ===============================================================
   // Audio

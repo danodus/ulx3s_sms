@@ -167,9 +167,6 @@ module video (
   reg [9:0] hc = 0;
   reg [9:0] vc = 0;
 
-  reg INT = 0;
-  reg [5:0] intCnt = 1;
-
   reg [7:0] r_char;
   reg [7:0] font_line;
   
@@ -197,20 +194,33 @@ module video (
   reg [4:0] spritex;
 
   // Line interrupt down-counter and per-line horizontal scroll latch.
-  // Each SMS line is two VGA lines; act on the first of the pair.
+  // Each SMS line is two VGA lines.
   reg [7:0] line_cnt;
   reg       line_irq;
+  reg       frame_irq;
   reg [7:0] x_scroll_latch;
   wire [8:0] sms_line = vc[9:1];
   wire [8:0] active_lines = lines240 ? 9'd240 : lines224 ? 9'd224 : 9'd192;
-  // Active display plus the first line of the bottom border.
-  wire count_line = (sms_line >= VB2) && (sms_line <= VB2 + active_lines);
+  // Active lines only. The next line is the frame interrupt; Hang-On's line
+  // handler treats any V counter >= $5F as the road and would overwrite the
+  // sky scroll the frame handler just programmed.
+  wire count_line = (sms_line >= VB2) && (sms_line < VB2 + active_lines);
+  // Middle of this SMS line (114 CPU clocks before the next one). Hang-On's
+  // line IRQ handler reads the V counter about 150 T-states after it is
+  // accepted and writes horizontal scroll about 70 later. Starting here keeps
+  // both the read and the write clear of the line boundary.
+  wire line_tick = (hc == 10'd0 && vc[0] == 1'b1);
+  // First blank line, halfway across it. The previous line's handler reads
+  // status early in this line; waiting until here lets that read finish as a
+  // line interrupt before the frame flag is raised.
+  wire frame_line = (sms_line == VB2 + active_lines);
+  wire frame_tick = (hc == 10'd0 && vc[0] == 1'b1 && frame_line);
 
-  // Frame interrupt is a short pulse. Line interrupt stays pending until
-  // the status port is read. R0 bit 4 masks the line interrupt output.
-  assign n_int = !(INT || (line_irq && line_int_en));
+  // Both interrupts stay asserted until the status port is read.
+  // R1 bit 5 masks the frame interrupt output, R0 bit 4 the line interrupt.
+  assign n_int = !((frame_irq && vert_retrace_int) || (line_irq && line_int_en));
   // Status bit 7 is the frame interrupt only, not the line interrupt.
-  assign interrupt_flag = (hc == HA + HFP && vc == VA + VFP);
+  assign interrupt_flag = frame_tick;
 
   assign vga_hs = !(hc >= HA + HFP && hc < HA + HFP + HS);
   assign vga_vs = !(vc >= VA + VFP && vc < VA + VFP + VS);
@@ -306,32 +316,29 @@ module video (
   reg [13:0] vid_addr;
   wire [7:0] vid_out; 
 
-  // Set horizontal and vertical counters, generate sync signals and
-  // vertical sync interrupt interrupt
+  // Counters free-run so they stay locked to the CPU clock, which is
+  // generated as exactly 228 T-states per SMS line (1600 pixel clocks).
   always @(posedge clk) begin
-    if (reset) begin
-      intCnt <= 1;
+    if (hc == HT - 1) begin
       hc <= 0;
-      vc <= 0;
+      if (vc == VT - 1) begin
+        vc <= 0;
+        r_y_scroll <= y_scroll;
+      end else vc <= vc + 1;
+    end else hc <= hc + 1;
+
+    if (reset) begin
       line_cnt <= 0;
       line_irq <= 0;
+      frame_irq <= 0;
       x_scroll_latch <= 0;
     end else begin
-      if (hc == HT - 1) begin
-        hc <= 0;
-        if (vc == VT - 1) begin
-          vc <= 0;
-          r_y_scroll <= y_scroll;
-        end else vc <= vc + 1;
-      end else hc <= hc + 1;
-      if (hc == HA + HFP && vc == VA + VFP && vert_retrace_int) INT <= 1;
-      if (INT) intCnt <= intCnt + 1;
-      if (!intCnt) INT <= 0;
-
-      // Latch horizontal scroll and run the line counter once per SMS line,
-      // before active pixels. A write to R8 during the line applies next line.
-      if (hc == 0 && vc[0] == 0) begin
+      // Latch horizontal scroll at the start of the SMS line. A write to R8
+      // during the line applies on the following line.
+      if (hc == 0 && vc[0] == 0)
         x_scroll_latch <= x_scroll;
+
+      if (line_tick) begin
         if (count_line) begin
           if (line_cnt == 0) begin
             line_cnt <= line_counter;
@@ -341,10 +348,22 @@ module video (
         end else
           line_cnt <= line_counter;
       end
-      // Status read clears a pending line interrupt. A new request on this
-      // same cycle stays pending.
-      if (status_read && !(hc == 0 && vc[0] == 0 && count_line && line_cnt == 0))
+
+      if (frame_tick) begin
+        frame_irq <= 1;
+        // A line request still pending here would be taken in blanking,
+        // where the V counter is already past Hang-On's road split.
         line_irq <= 0;
+      end
+
+      // Status read clears pending interrupts. A request raised on this
+      // same cycle stays pending.
+      if (status_read) begin
+        if (!(line_tick && count_line && line_cnt == 0))
+          line_irq <= 0;
+        if (!frame_tick)
+          frame_irq <= 0;
+      end
     end
   end
 
