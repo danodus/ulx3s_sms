@@ -31,16 +31,22 @@ module sn76489
 
    reg [2:0] reg_a;
    reg [3:0] div_count = 0;
-   
+   reg       clk_en_d = 0;
+
+   // clk_en stays high for several pixel clocks per T-state. The SN76489
+   // divides the PSG clock by 16, so count one step per rising edge.
    always @(posedge clk or posedge reset)
      if (reset)
        begin
           div_count <= 0;
+          clk_en_d <= 0;
+          clk_div16_en <= 0;
        end
      else
        begin
+          clk_en_d <= clk_en;
           clk_div16_en <= 1'b0;
-          if (clk_en)
+          if (clk_en && !clk_en_d)
             begin
                if (div_count == 0)
                  clk_div16_en <= 1'b1;

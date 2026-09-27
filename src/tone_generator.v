@@ -12,9 +12,8 @@ module tone_generator
 
    parameter init = 0;
    
-   // the datasheet suggests that the frequency register is loaded
-   // into a 10-bit counter and decremented until it hits 0
-   // however, this results in a half-period of FREQ+1!
+   // Half-period is the register value, in clk/16 ticks:
+   // f = clk / (32 * freq). Zero holds the output high (no tone).
    always @(posedge clk or posedge reset)
      if(reset)
        begin
@@ -23,15 +22,18 @@ module tone_generator
        end
      else if (clk_div16_en)
        begin
-          if (count == 0)
+          if (freq == 0)
+            begin
+               count <= 0;
+               tone  <= 1'b1;
+            end
+          else if (count <= 1)
             begin
                count <= freq;
                tone  <= !tone;
             end
           else
-            begin
-               count <= count - 1'b1;
-            end
+            count <= count - 1'b1;
        end
 
    // assign output
