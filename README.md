@@ -12,11 +12,13 @@ There is audio output, but it needs improving.
 
 It currently uses the Europe/USA 1.3 BIOS, which, on power-up,  displays the Sega trademark and then looks for a game cartridge.
 
-Games are loaded via an On-Screen Display (OSD) overlaid on the HDMI output. The OSD is started by pressing all four direction buttons. 
+On power-up, and again after the power button is pressed, the FPGA waits for a cartridge on the USB serial port and holds the Z80 in reset. Transfer a ROM with:
 
-To run the OSD you need micropython on the ESP32, and then do `import osd`.
+```
+python3 tools/load_rom.py /dev/cu.usbserial-XXXX roms/game.sms
+```
 
-The OSD displays a file browser showing files on the ESP32 flash memory and an SD card. You navigate to a .sms file using the direction buttons, and select it with the right button. The game should then start.
+The script needs pyserial (`python3 -m pip install pyserial`). It waits for the loader, sends the ROM at 921600 baud, and the game starts once the transfer checks out. Press the power button to load a different ROM.
 
 There are lots of games on the [planetemu](https://www.planetemu.net/roms/sega-master-system) site.
 
@@ -44,8 +46,6 @@ make prog
 ```
 
 It currently defaults to an 85F board. To use a 12F add `DEVICE = 12k` to the Makefile.
-
-The python files from esp32/osd should be uploaded to the ESP32.
 
 ## Bugs
 

@@ -21,11 +21,12 @@ module sms
   // Audio
   output [3:0]  audio_l,
   output [3:0]  audio_r,
-  // ESP32 passthru
+  // USB serial ROM loader. WiFi pins stay in the port list so the
+  // board constraints still match; they are held idle.
   input         ftdi_txd,
   output        ftdi_rxd,
   input         wifi_txd,
-  output        wifi_rxd,  // SPI from ESP32
+  output        wifi_rxd,
   input         wifi_gpio16,
   input         wifi_gpio5,
   output        wifi_gpio0,
@@ -80,9 +81,12 @@ module sms
   assign usb_fpga_pu_dp = 1;
   assign usb_fpga_pu_dn = 1;
   
-  // passthru to ESP32 micropython serial console
-  assign wifi_rxd = ftdi_txd;
-  assign ftdi_rxd = wifi_txd;
+  // ESP32 and SD pins held idle so the FPGA does not drive those buses
+  assign wifi_rxd = 1'b1;
+  assign wifi_gpio0 = 1'b1;
+  assign sd_clk = 1'bz;
+  assign sd_cmd = 1'bz;
+  assign sd_d = 4'bzzzz;
 
   // VGA (should be assigned to some gp/gn outputs
   wire   [7:0]  red;
@@ -173,54 +177,12 @@ module sms
   wire sdram_clk = clocks[3]; // phase shifted for chip
 
   // ===============================================================
-  // Joystick for OSD control and games
+  // Joystick
   // ===============================================================
   reg joypad2 = 0;
   reg [6:0] R_btn_joy;
   always @(posedge cpuClock)
     R_btn_joy <= btn;
-
-  // ===============================================================
-  // SPI Slave for RAM and CPU control
-  // ===============================================================
-  wire        spi_ram_wr, spi_ram_rd;
-  wire [31:0] spi_ram_addr;
-  wire  [7:0] spi_ram_di;
-  wire  [7:0] spi_ram_do = ramOut;
-
-  assign sd_d[0] = 1'bz;
-  assign sd_d[3] = 1'bz; // FPGA pin pullup sets SD card inactive at SPI bus
-
-  wire irq;
-  spi_ram_btn
-  #(
-    .c_sclk_capable_pin(1'b0),
-    .c_addr_bits(32)
-  )
-  spi_ram_btn_inst
-  (
-    .clk(cpuClock),
-    .csn(~wifi_gpio5),
-    .sclk(wifi_gpio16),
-    .mosi(sd_d[1]), // wifi_gpio4
-    .miso(sd_d[2]), // wifi_gpio12
-    .btn(R_btn_joy),
-    .irq(irq),
-    .wr(spi_ram_wr),
-    .rd(spi_ram_rd),
-    .addr(spi_ram_addr),
-    .data_in(spi_ram_do),
-    .data_out(spi_ram_di)
-  );
-  // Used for interrupt to ESP32
-  assign wifi_gpio0 = ~irq;
-
-  reg [7:0] R_cpu_control;
-  always @(posedge cpuClock) begin
-    if (spi_ram_wr && spi_ram_addr[31:24] == 8'hFF) begin
-      R_cpu_control <= spi_ram_di;
-    end
-  end
 
   // ===============================================================
   // Reset generation
@@ -238,9 +200,31 @@ module sms
   // ===============================================================
   wire [15:0] pc;
   
+  wire       load_done;
+  wire       loader_we;
+  wire [23:0] loader_addr;
+  wire [7:0] loader_data;
+
+  // Power-up and the power button both return to the load phase.
+  // The Z80 stays reset until the serial transfer checks out.
+  wire loader_reset = !pwr_up_reset_n | !btn[0];
+  serial_loader
+  serial_loader_inst
+  (
+    .clk(cpuClock),
+    .cpuClockEnable(cpuClockEnable),
+    .reset(loader_reset),
+    .rxd(ftdi_txd),
+    .txd(ftdi_rxd),
+    .load_done(load_done),
+    .weB(loader_we),
+    .addrB(loader_addr),
+    .dinB(loader_data)
+  );
+
   reg n_hard_reset;
   always @(posedge cpuClock)
-    n_hard_reset <= pwr_up_reset_n & btn[0] & ~R_cpu_control[0];
+    n_hard_reset <= pwr_up_reset_n & btn[0] & load_done;
 
   wire reset = !n_hard_reset;
 
@@ -308,10 +292,10 @@ module sms
    .oeA(cpuClockEnable),
    .dinA(0),
    .doutA(romOut),
-   // SPI interface
-   .weB(spi_ram_wr && spi_ram_addr[31:24] == 8'h00),
-   .addrB(spi_ram_addr[23:0]),
-   .dinB(spi_ram_di),
+   // Serial loader writes the cartridge here
+   .weB(loader_we),
+   .addrB(loader_addr),
+   .dinB(loader_data),
    .oeB(0),
    .doutB()
   );
@@ -454,43 +438,16 @@ module sms
     .diag(vga_diag)
   );
 
-  // ===============================================================
-  // SPI Slave for OSD display
-  // ===============================================================
-
-  wire [7:0] osd_vga_r, osd_vga_g, osd_vga_b;
-  wire osd_vga_hsync, osd_vga_vsync, osd_vga_blank;
-  spi_osd
-  #(
-    .c_start_x(62), .c_start_y(80),
-    .c_chars_x(64), .c_chars_y(20),
-    .c_init_on(0),
-    .c_transparency(1),
-    .c_char_file("osd.mem"),
-    .c_font_file("font_bizcat8x16.mem")
-  )
-  spi_osd_inst
-  (
-    .clk_pixel(clk_vga), .clk_pixel_ena(1),
-    .i_r(red  ),
-    .i_g(green),
-    .i_b(blue ),
-    .i_hsync(~hSync), .i_vsync(~vSync), .i_blank(~vga_de),
-    .i_csn(~wifi_gpio5), .i_sclk(wifi_gpio16), .i_mosi(sd_d[1]), // .o_miso(),
-    .o_r(osd_vga_r), .o_g(osd_vga_g), .o_b(osd_vga_b),
-    .o_hsync(osd_vga_hsync), .o_vsync(osd_vga_vsync), .o_blank(osd_vga_blank)
-  );
-
   // Convert VGA to HDMI
   HDMI_out vga2dvid (
     .pixclk(clk_vga),
     .pixclk_x5(clk_hdmi),
-    .red  (osd_vga_r),
-    .green(osd_vga_g),
-    .blue (osd_vga_b),
-    .vde  (~osd_vga_blank),
-    .hSync(~osd_vga_hsync),
-    .vSync(~osd_vga_vsync),
+    .red  (red),
+    .green(green),
+    .blue (blue),
+    .vde  (vga_de),
+    .hSync(hSync),
+    .vSync(vSync),
     .gpdi_dp(gpdi_dp),
     .gpdi_dn(gpdi_dn)
   );
