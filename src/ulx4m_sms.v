@@ -620,6 +620,9 @@ module sms
     .sprite_large(r_vdp[1][1]),
     .sprite_enlarged(r_vdp[1][0]),
     .vert_retrace_int(r_vdp[1][5]),
+    .line_counter(line_counter),
+    .line_int_en(r_vdp[0][4]),
+    .status_read(status_read),
     .sprite_collision(sprite_collision),
     .too_many_sprites(too_many_sprites),
     .spritex(spritex),
@@ -705,6 +708,7 @@ module sms
 
   reg  r_interrupt_flag, r_sprite_collision;
   reg  r_status_read;
+  reg  status_read;
   wire [7:0] status = {r_interrupt_flag, too_many_sprites, r_sprite_collision, (too_many_sprites ? spritex : 5'b11111)};
   wire [7:0] joy_data0 = joypad2 ? {R_btn_joy[4:3], 6'b111111} : {2'b11, ~R_btn_joy[2:1], ~R_btn_joy[6:3]};
   wire [7:0] joy_data1 = joypad2 ? {4'b0101, R_btn_joy[2:1], R_btn_joy[6:5]} : {8'b10111111};
@@ -725,7 +729,9 @@ module sms
     if (!n_hard_reset) begin
       r_interrupt_flag <= 0;
       r_sprite_collision <= 0;
+      status_read <= 0;
     end else begin
+      status_read <= 0;
       if (interrupt_flag) r_interrupt_flag <= 1;
       if (sprite_collision) r_sprite_collision <= 1;
       if (cpuClockEdge) begin
@@ -733,6 +739,7 @@ module sms
         if (r_status_read && !(vdp_ctrl_port && n_ioRD == 1'b0)) begin
           r_interrupt_flag <= 0;
           r_sprite_collision <= 0;
+          status_read <= 1;
         end
       end
     end

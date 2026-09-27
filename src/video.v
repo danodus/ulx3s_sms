@@ -33,6 +33,9 @@ module video (
   input         sprite_large,
   input         sprite_enlarged,
   input         vert_retrace_int,
+  input  [7:0]  line_counter,
+  input         line_int_en,
+  input         status_read,
   output        n_int,
   output        sprite_collision,
   output        too_many_sprites,
@@ -193,10 +196,21 @@ module video (
   assign too_many_sprites = (num_sprites > 8);
   reg [4:0] spritex;
 
-  // Set CPU interrupt flag
-  assign n_int = !INT;
-  // Status interrupt flag
-  assign interrupt_flag = (hc == VA);
+  // Line interrupt down-counter and per-line horizontal scroll latch.
+  // Each SMS line is two VGA lines; act on the first of the pair.
+  reg [7:0] line_cnt;
+  reg       line_irq;
+  reg [7:0] x_scroll_latch;
+  wire [8:0] sms_line = vc[9:1];
+  wire [8:0] active_lines = lines240 ? 9'd240 : lines224 ? 9'd224 : 9'd192;
+  // Active display plus the first line of the bottom border.
+  wire count_line = (sms_line >= VB2) && (sms_line <= VB2 + active_lines);
+
+  // Frame interrupt is a short pulse. Line interrupt stays pending until
+  // the status port is read. R0 bit 4 masks the line interrupt output.
+  assign n_int = !(INT || (line_irq && line_int_en));
+  // Status bit 7 is the frame interrupt only, not the line interrupt.
+  assign interrupt_flag = (hc == HA + HFP && vc == VA + VFP);
 
   assign vga_hs = !(hc >= HA + HFP && hc < HA + HFP + HS);
   assign vga_vs = !(vc >= VA + VFP && vc < VA + VFP + VS);
@@ -215,7 +229,7 @@ module video (
 
   wire [3:0] char_width = (mode == 0 ? 6 : 8);
   wire [4:0] next_char = x_char + 1;
-  wire [4:0] next_scroll = y < 16 && disable_horiz ? next_char : next_char - x_scroll[7:3];
+  wire [4:0] next_scroll = y < 16 && disable_horiz ? next_char : next_char - x_scroll_latch[7:3];
 
   // Calculate the border
   wire [9:0] hb_adj = (mode == 0 ? HBadj : 0);
@@ -247,7 +261,7 @@ module video (
 
   reg [7:0] r_y_scroll;
 
-  wire [2:0] x_scroll_pix = y < 16 && disable_horiz ? x_pix : x_pix - x_scroll[2:0];
+  wire [2:0] x_scroll_pix = y < 16 && disable_horiz ? x_pix : x_pix - x_scroll_latch[2:0];
 
   wire [7:0] depth = (line240 ? 240 : line224 : 224 : 192);
   wire [7:0] y_limit = (lines240 | lines224) ? 255 : 223;
@@ -299,6 +313,9 @@ module video (
       intCnt <= 1;
       hc <= 0;
       vc <= 0;
+      line_cnt <= 0;
+      line_irq <= 0;
+      x_scroll_latch <= 0;
     end else begin
       if (hc == HT - 1) begin
         hc <= 0;
@@ -310,6 +327,24 @@ module video (
       if (hc == HA + HFP && vc == VA + VFP && vert_retrace_int) INT <= 1;
       if (INT) intCnt <= intCnt + 1;
       if (!intCnt) INT <= 0;
+
+      // Latch horizontal scroll and run the line counter once per SMS line,
+      // before active pixels. A write to R8 during the line applies next line.
+      if (hc == 0 && vc[0] == 0) begin
+        x_scroll_latch <= x_scroll;
+        if (count_line) begin
+          if (line_cnt == 0) begin
+            line_cnt <= line_counter;
+            line_irq <= 1;
+          end else
+            line_cnt <= line_cnt - 1;
+        end else
+          line_cnt <= line_counter;
+      end
+      // Status read clears a pending line interrupt. A new request on this
+      // same cycle stays pending.
+      if (status_read && !(hc == 0 && vc[0] == 0 && count_line && line_cnt == 0))
+        line_irq <= 0;
     end
   end
 
