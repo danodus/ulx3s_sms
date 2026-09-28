@@ -32,8 +32,6 @@ The VDP implementation generates VGA output, which is then converted to HDMI. It
 
 Console memory (8KB) uses BRAM, as does the video ram (16KB), and the bios rom (32KB).
 
-Top-level parameters allow the VGA output to be selected, and also LCD and LED diagnostics.
-
 ## Installation
 
 You need recent versions of Yosys, nextpnr-ecp5, project trellis and fujprog.
@@ -47,9 +45,11 @@ make prog
 
 It currently defaults to an 85F board. To use a 12F add `DEVICE = 12k` to the Makefile.
 
-## Gamepad
+## USB Gamepad
 
-A gamepad can be connected to US2 using a USB-OTG adapter.  When detected, both D6 and D7 LEDs will be ON.  With my Kiwitata SNES controller, the detection is not reliable.  This is a known issue with the USB HID host I'm using (https://github.com/nand2mario/usb_hid_host/issues/5).
+A USB gamepad can be connected to US2 using a USB-OTG adapter.  When detected, both D6 and D7 LEDs will be ON.  With my Kiwitata SNES controller, the detection is not reliable.  This is a known issue with the USB HID host I'm using (https://github.com/nand2mario/usb_hid_host/issues/5).
+
+To switch between Joystick 1 and 2, press the Select button.  The LED D5 will be ON when josytick #2 is selected.
 
 ## Bugs
 
@@ -65,6 +65,7 @@ Not all games run.
 
 These are some of the games that seem to have problems:
 
+- Assault City - freeze
 - Baku Baku Animal - does not respond to start button (wrong controller?)
 - Bram Stoker's Dracula - screen corruption
 - Fantastic Dizzy - Software Error

@@ -194,7 +194,6 @@ module sms
   // Joystick
   // ===============================================================
   wire [6:0] usb_gamepad_btn;
-  reg joypad2 = 0;
   reg [6:0] R_btn_joy;
   always @(posedge cpuClock)
     R_btn_joy <= btn | usb_gamepad_btn;
@@ -236,6 +235,27 @@ module sms
   );
 
   assign usb_gamepad_btn = {game_r, game_l, game_d, game_u, game_b, game_a, 1'b0};
+
+  // ===============================================================
+  // Joypad 2 Selection
+  // ===============================================================
+
+  reg joypad2, wait_sel_release;
+  
+  always @(posedge cpuClock) begin
+    if (!pwr_up_reset_n) begin
+      joypad2 <= 1'b0;
+      wait_sel_release <= 1'b0;
+    end else begin
+      if (game_sel && !wait_sel_release) begin
+        joypad2 <= ~joypad2;
+        wait_sel_release <= 1'b1;
+      end else begin
+        if (!game_sel)
+          wait_sel_release <= 1'b0;
+      end
+    end
+  end
 
   // ===============================================================
   // CPU
@@ -610,7 +630,7 @@ module sms
   // ===============================================================
   // Leds
   // ===============================================================
-  assign led = {usb_type, pc[15:14], !n_hard_reset, mode};
+  assign led = {usb_type, joypad2, 1'b0, !n_hard_reset, mode};
 
   always @(posedge cpuClock) diag16 <= {r_vdp[0], r_vdp[1]};
 
