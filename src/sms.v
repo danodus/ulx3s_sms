@@ -15,7 +15,9 @@ module sms
   // HDMI
   output [3:0]  gpdi_dp,
   output [3:0]  gpdi_dn,
-  // Keyboard
+  // USB HID Host
+  inout	        usb_fpga_bd_dn,
+  inout	        usb_fpga_bd_dp,
   output        usb_fpga_pu_dp,
   output        usb_fpga_pu_dn,
   // Audio
@@ -78,8 +80,8 @@ module sms
   reg [7:0] r_joy_ctrl;
 
   // pull-ups for us2 connector 
-  assign usb_fpga_pu_dp = 1;
-  assign usb_fpga_pu_dn = 1;
+  assign usb_fpga_pu_dp = 1'b0;
+  assign usb_fpga_pu_dn = 1'b0;
   
   // ESP32 and SD pins held idle so the FPGA does not drive those buses
   assign wifi_rxd = 1'b1;
@@ -176,12 +178,26 @@ module sms
   wire sdram_clk = clocks[3]; // phase shifted for chip
 
   // ===============================================================
+  // USB HID Host Clock generation
+  // ===============================================================
+  wire clk_usb_locked;
+  wire clk_usb;
+  usb_pll ecp5pll_usb_inst
+  (
+    .clkin(clk_25mhz),
+    .clk12(clk_usb),
+    .clk100(),
+    .locked(clk_usb_locked)
+  );
+ 
+  // ===============================================================
   // Joystick
   // ===============================================================
+  wire [6:0] usb_gamepad_btn;
   reg joypad2 = 0;
   reg [6:0] R_btn_joy;
   always @(posedge cpuClock)
-    R_btn_joy <= btn;
+    R_btn_joy <= btn | usb_gamepad_btn;
 
   // ===============================================================
   // Reset generation
@@ -191,8 +207,35 @@ module sms
 
   always @(posedge cpuClock) begin
      if (!pwr_up_reset_n)
-       pwr_up_reset_counter <= pwr_up_reset_counter + 1;
+       pwr_up_reset_counter <= (clk_sdram_locked && clk_usb_locked) ? pwr_up_reset_counter + 1 : 0;
   end
+
+  // ===============================================================
+  // USB Gamepad
+  // ===============================================================
+
+  wire [1:0] usb_type;
+  wire game_l, game_r, game_u, game_d, game_a, game_b, game_x, game_y;
+  wire game_sel, game_sta;
+
+  wire usb_reset = !pwr_up_reset_n | !btn[0];
+
+  usb_hid_host usb (
+    .usbclk(clk_usb),
+    .usbrst_n(!usb_reset),
+    .usb_dm(usb_fpga_bd_dn),
+    .usb_dp(usb_fpga_bd_dp),
+    .typ(usb_type),
+    .report(),
+    .key_modifiers(), .key1(), .key2(), .key3(), .key4(),
+    .mouse_btn(), .mouse_dx(), .mouse_dy(),
+    .game_l(game_l), .game_r(game_r), .game_u(game_u), .game_d(game_d),
+    .game_a(game_a), .game_b(game_b), .game_x(game_x), .game_y(game_y), 
+    .game_sel(game_sel), .game_sta(game_sta),
+    .conerr(), .dbg_hid_report()
+  );
+
+  assign usb_gamepad_btn = {game_r, game_l, game_d, game_u, game_b, game_a, 1'b0};
 
   // ===============================================================
   // CPU
@@ -283,7 +326,7 @@ module sms
    // system interface
    .clk(clk_sdram),
    .clkref(cpuClockEnable),
-   .init(!clk_sdram_locked),
+   .init(!pwr_up_reset_n),
    .we_out(sdram_d_wr),
    // cpu/chipset interface
    .weA(0),
@@ -567,7 +610,7 @@ module sms
   // ===============================================================
   // Leds
   // ===============================================================
-  assign led = {pc[15:14], !n_hard_reset, mode};
+  assign led = {usb_type, pc[15:14], !n_hard_reset, mode};
 
   always @(posedge cpuClock) diag16 <= {r_vdp[0], r_vdp[1]};
 
