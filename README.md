@@ -61,18 +61,12 @@ Not all games run.
 
 These are some of the games that seem to have problems:
 
-- Asterix - hangs
-- Baku Baku Animal - does not respond to start button
-- Chop Lifter - hangs
-- Dracula - screen corruption
+- Baku Baku Animal - does not respond to start button (wrong controller?)
+- Bram Stoker's Dracula - screen corruption
 - Fantastic Dizzy - Software Error
 - Jungle Book - screen corruption
 - Lemmings - screen corruption
-- Lion King - crashes
-- Miracle World - hangs
-- Ms Pacman - hangs
-- Outrun - screen corruption
-- Space Harrier - hangs
+- Lion King - screen corruption
+- Alex Kidd in Miracle World - hangs
 - Spell Caster - hangs
 - Wanted - screen corruption
-- Zaxxon 3D - screen corruption
