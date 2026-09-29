@@ -53,12 +53,6 @@ To switch between Joystick 1 and 2, press the Select button.  The LED D5 will be
 
 ## Bugs
 
-Audio needs improving.
-
-Only joypad 1 is supported and seems to have some problems.
-
-There is a vertical colored bar down the left of some games.
-
 Various edge cases in the VDP are not correct.
 
 Not all games run.

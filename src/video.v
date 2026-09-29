@@ -649,15 +649,15 @@ module video (
                            mode == 4 && sprite_pix[5] ? sprite_color4[5] :
                            mode == 4 && sprite_pix[6] ? sprite_color4[6] :
                            mode == 4 && sprite_pix[7] ? sprite_color4[7] :
-                           mode == 4 && x < 8 && mask_col0 ? back_color :
                            mode == 0 ? (font_line[~x_pix] ? text_color : back_color) :
                            mode == 3 ? (x_pix < 4 ? font_line[7:4] : font_line[3:0]) :
                            mode == 4 ? {bit_plane[3][index], bit_plane[2][index], bit_plane[1][index], bit_plane[0][index]} :
                            font_line[~x_pix] ? screen_color[7:4] : screen_color[3:0];
 
   // Set the 24-bit color value, taking border into account
-  wire [3:0] col = border ? back_color : pixel_color;
-  wire [23:0] color = palette || sprite_pix != 0 || border ? colors2[col] : colors1[col];
+  wire mask_col = x < 8 && mask_col0;
+  wire [3:0] col = border || mask_col ? back_color : pixel_color;
+  wire [23:0] color = palette || sprite_pix != 0 || border || mask_col ? colors2[col] : colors1[col];
 
   // Set the 8-bit VGA output signals
   assign vga_r = !vga_de ? 8'b0 : color[23:16];
