@@ -16,7 +16,8 @@ module serial_loader
   output reg         load_done,
   output wire        weB,
   output wire [23:0] addrB,
-  output wire [7:0]  dinB
+  output wire [7:0]  dinB,
+  output reg  [31:0] rom_len
 );
 
   localparam [4:0]  CLKS_PER_BIT = 5'd27;
@@ -149,7 +150,6 @@ module serial_loader
   reg        hold_valid = 1'b0;
   reg [7:0]  hold_data = 8'd0;
   reg [1:0]  len_idx = 2'd0;
-  reg [31:0] rom_len = 32'd0;
   reg [31:0] rom_got = 32'd0;
   reg [7:0]  rom_xor = 8'd0;
   reg        reply_ok = 1'b0;

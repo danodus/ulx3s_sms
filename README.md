@@ -59,13 +59,10 @@ Not all games run.
 
 These are some of the games that seem to have problems:
 
-- Assault City - freeze
 - Baku Baku Animal - does not respond to start button (wrong controller?)
 - Bram Stoker's Dracula - screen corruption
 - Fantastic Dizzy - Software Error
 - Jungle Book - screen corruption
 - Lemmings - screen corruption
 - Lion King - screen corruption
-- Alex Kidd in Miracle World - hangs
-- Spell Caster - hangs
 - Wanted - screen corruption

@@ -290,6 +290,28 @@ module sms
   wire       loader_we;
   wire [23:0] loader_addr;
   wire [7:0] loader_data;
+`ifdef SYNTHESIS
+  wire [31:0] rom_len;
+`else
+  reg [31:0] rom_len = 0;
+`endif
+
+  // Cartridge ROM ignores address bits above its size, so a bank
+  // number such as $87 on a 256KB cart reads bank 7. The next
+  // power-of-two length, minus one, is that mirror mask.
+  function [23:0] pow2_mask;
+    input [31:0] len;
+    reg [31:0] v;
+    begin
+      v = len - 32'd1;
+      v = v | (v >> 1);
+      v = v | (v >> 2);
+      v = v | (v >> 4);
+      v = v | (v >> 8);
+      v = v | (v >> 16);
+      pow2_mask = v[23:0];
+    end
+  endfunction
 
 `ifdef SYNTHESIS
   // Power-up and the power button both return to the load phase.
@@ -306,7 +328,8 @@ module sms
     .load_done(load_done),
     .weB(loader_we),
     .addrB(loader_addr),
-    .dinB(loader_data)
+    .dinB(loader_data),
+    .rom_len(rom_len)
   );
 `else
   assign load_done = 1'b1;
@@ -355,6 +378,7 @@ module sms
   wire [23:0] sdramAddress = cpuAddress[15:14] == 0 ? {slot0, cpuAddress[13:0]} :
                     cpuAddress[15:14] == 1 ? {slot1, cpuAddress[13:0]} :
                     cpuAddress[15:14] == 2 ? {slot2, cpuAddress[13:0]} : cpuAddress;
+  wire [23:0] cart_addr = sdramAddress & pow2_mask(rom_len);
 
   `ifdef SYNTHESIS
   wire sdram_d_wr;
@@ -381,7 +405,7 @@ module sms
    .we_out(sdram_d_wr),
    // cpu/chipset interface
    .weA(0),
-   .addrA(sdramAddress),
+   .addrA(cart_addr),
    .oeA(cpuClockEnable),
    .dinA(0),
    .doutA(romOut),
@@ -398,10 +422,12 @@ module sms
     integer file, r;
     file = $fopen("cart.rom", "rb");
     r = $fread(game_rom, file);
+    rom_len = r;
     $display("Nb bytes read: %d", r);
     $fclose(file);
   end
-  assign romOut = game_rom[sdramAddress];
+  // Low 19 bits: the array is 512KB. cart_addr already mirrors at rom_len.
+  assign romOut = game_rom[cart_addr[18:0]];
   // always @(posedge cpuClock) begin
   //   if (cpuAddress[15:14] < 3 && n_memRD == 1'b0 && r_mem_ctrl[3] == 1'b1)
   //     $display("%x, %x", sdramAddress, romOut);
