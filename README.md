@@ -53,16 +53,6 @@ To switch between Joystick 1 and 2, press the Select button.  The LED D5 will be
 
 ## Bugs
 
-Various edge cases in the VDP are not correct.
+Pause NMI is not currently implemented.
 
-Not all games run.
-
-These are some of the games that seem to have problems:
-
-- Baku Baku Animal - does not respond to start button (wrong controller?)
-- Bram Stoker's Dracula - screen corruption
-- Fantastic Dizzy - Software Error
-- Jungle Book - screen corruption
-- Lemmings - screen corruption
-- Lion King - screen corruption
-- Wanted - screen corruption
+Refer to the [compatibility list](COMPAT.md) for more details.
