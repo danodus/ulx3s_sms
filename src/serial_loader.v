@@ -204,6 +204,7 @@ module serial_loader
               state   <= S_LEN;
               len_idx <= 2'd0;
               rom_len <= 32'd0;
+              load_done <= 1'b0;
             end
           end
         end
@@ -261,7 +262,7 @@ module serial_loader
               load_done <= 1'b1;
           end else if (reply_armed && !tx_busy && !tx_start) begin
             if (reply_ok)
-              state <= S_DONE;
+              state <= S_WAIT;
             else begin
               state      <= S_WAIT;
               beacon_cnt <= R_PERIOD;
