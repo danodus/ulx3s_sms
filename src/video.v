@@ -48,6 +48,7 @@ module video (
   input         lines224,
   input         lines240,
   input         mask_col0,
+  input         pal,
   output [7:0]  v_counter,
   output [7:0]  h_counter,
   output reg [15:0] diag
@@ -200,6 +201,27 @@ module video (
   reg [7:0] x_scroll_latch;
   wire [8:0] sms_line = vc[9:1];
   wire [8:0] active_lines = lines240 ? 9'd240 : lines224 ? 9'd224 : 9'd192;
+  // NTSC is 262 SMS lines, two VGA lines each, filling VT. PAL is 313;
+  // the extra 51 lines are vertical back porch so a European frame handler
+  // can finish streaming sprite tiles and the SAT before the raster reaches
+  // the HUD. 25 MHz / (800 * 626) is just under 50 Hz.
+  localparam [8:0] PAL_LINES = 9'd313;
+  wire [9:0] v_total = pal ? (VT + 10'd102) : VT;
+  // Offset of this SMS line from the first active line, wrapping at the
+  // PAL frame length. Active line 0 is vcounter 0.
+  wire [8:0] pal_off = (sms_line >= VB2) ? (sms_line - VB2)
+                                        : (sms_line + PAL_LINES - VB2);
+  // PAL 192: 00-F2, BA-FF. 224: 00-FF, 00-02, CA-FF. 240: 00-FF, 00-0A, D2-FF.
+  wire [7:0] pal_vc_192 = (pal_off < 9'd243) ? pal_off[7:0]
+                                             : (8'hBA + (pal_off - 9'd243));
+  wire [7:0] pal_vc_224 = (pal_off < 9'd256) ? pal_off[7:0] :
+                          (pal_off < 9'd259) ? (pal_off - 9'd256) :
+                          (8'hCA + (pal_off - 9'd259));
+  wire [7:0] pal_vc_240 = (pal_off < 9'd256) ? pal_off[7:0] :
+                          (pal_off < 9'd267) ? (pal_off - 9'd256) :
+                          (8'hD2 + (pal_off - 9'd267));
+  wire [7:0] pal_v_counter = lines240 ? pal_vc_240 :
+                             lines224 ? pal_vc_224 : pal_vc_192;
   // Active lines only. The next line is the frame interrupt; Hang-On's line
   // handler treats any V counter >= $5F as the road and would overwrite the
   // sky scroll the frame handler just programmed.
@@ -229,7 +251,9 @@ module video (
   wire [7:0] x = hc[9:1] - HB2;
   wire [7:0] y = vc[9:1] - VB2;
 
-  assign v_counter = y;
+  // NTSC keeps the linear counter Hang-On samples from the line IRQ.
+  // PAL games read the wrapped blanking sequence to pace VRAM updates.
+  assign v_counter = pal ? pal_v_counter : y;
   assign h_counter = x;
 
   // Set the x position as a character and pixel offset. Valid in all modes.
@@ -320,7 +344,7 @@ module video (
   always @(posedge clk) begin
     if (hc == HT - 1) begin
       hc <= 0;
-      if (vc == VT - 1) begin
+      if (vc == v_total - 1) begin
         vc <= 0;
       end else vc <= vc + 1;
     end else hc <= hc + 1;

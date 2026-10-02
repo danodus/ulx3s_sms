@@ -8,8 +8,6 @@ It has HDMI and optional VGA output. The resolution is 640x480 at 60MHz.
 
 Joypad 1 is implemented by using the buttons.
 
-There is audio output, but it needs improving.
-
 It currently uses the Europe/USA 1.3 BIOS, which, on power-up,  displays the Sega trademark and then looks for a game cartridge.
 
 On power-up, and again after the power button is pressed, the FPGA waits for a cartridge on the USB serial port and holds the Z80 in reset. Transfer a ROM with:
@@ -44,6 +42,8 @@ make prog
 ```
 
 It currently defaults to an 85F board. To use a 12F add `DEVICE = 12k` to the Makefile.
+
+You can select the PAL mode with SW1. OFF=NTSC (262 lines), ON=PAL (313 lines). Note that the unlike the real hardware the CPU clock speed is the same for both.
 
 ## USB Gamepad
 

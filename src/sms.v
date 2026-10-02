@@ -11,7 +11,7 @@ module sms
   // Buttons
   input [6:0]   btn,
   // Switches
-  input [3:0]   sw,
+  input [3:0]   sw = 4'b0,
   // HDMI
 `ifdef SYNTHESIS
   output [3:0]  gpdi_dp,
@@ -567,6 +567,10 @@ module sms
     .lines224(r_vdp[0][1] & r_vdp[1][4]),
     .lines240(r_vdp[0][1] & r_vdp[1][3]),
     .mask_col0(r_vdp[0][5]),
+    // SW1 (on): PAL, 313 lines. European games such as The Addams Family
+    // stream the player sprites and the top HUD during blanking and do not
+    // finish in an NTSC frame, so the raster samples a half-written SAT.
+    .pal(sw[0]),
     .v_counter(v_counter),
     .h_counter(h_counter),
     .diag(vga_diag)
