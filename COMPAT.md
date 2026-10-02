@@ -1,37 +1,37 @@
 | Name | Status |
 | ---- | ------ |
 | Action Fighter (USA) (Rev-A).sms | OK |
-| Addams Family, The (Europe).sms | Minor: Top screen flashing, top white line of health moving with playfield |
-| Aerial Assault (USA).sms | Minor: Some bogus lines under some sprites |
+| Addams Family, The (Europe).sms | OK (requires PAL) |
+| Aerial Assault (USA).sms | OK |
 | After Burner (USA).sms | OK |
-| Air Rescue (Europe).sms | Flashing horizontal lines during intro and gameplay when scrolling verically |
+| Air Rescue (Europe).sms | OK |
 | Alex Kidd - High-Tech World (USA).sms | OK |
-| Alex Kidd - The Lost Stars (USA).sms | Minor: Priority issue with the player sprite and the header |
-| Alex Kidd in Miracle World (USA) (Rev-A).sms | Minor: Garbage at transition screen, vertical scroll glitches |
+| Alex Kidd - The Lost Stars (USA).sms | OK |
+| Alex Kidd in Miracle World (USA) (Rev-A).sms | OK |
 | Alex Kidd in Shinobi World (USA).sms | OK |
 | Alien 3 (Europe).sms | OK |
-| Alien Storm (Europe).sms | Minor: Bogus line under some sprites |
-| Alien Syndrome (USA).sms | Minor: Garbage at transition screen when we show status page |
-| Altered Beast (USA).sms | Minor: Title bogus line at the bottom |
-| Arcade Smash Hits (Europe).sms | Minor: Garbage at transition screen |
+| Alien Storm (Europe).sms | Lot of flicker and bogus pixels |
+| Alien Syndrome (USA).sms | OK |
+| Altered Beast (USA).sms | OK |
+| Arcade Smash Hits (Europe).sms | OK |
 | Assault City (USA).sms | OK (cannot test gameplay, requires a gun) |
 | Asterix (Europe) (Rev-A).sms | OK |
-| Asterix and the Great Rescue (Europe).sms | In the story, difficulty selection and score pages, the image is above the text instead of behind, health bar at top-left not visible |
-| Asterix and the Secret Mission (Europe).sms | Sprite always on top at exit |
-| Astro Warrior (USA).sms | Minor: Garbage at transition screen |
-| Ayrton Senna's Super Monaco GP II (Europe).sms | Track at horizon not properly shifted and top of footer shifted |
-| Aztec Adventure (USA).sms | Line not shifted in intro |
-| Bank Panic (Europe).sms | |
-| Batman Returns (Europe).sms | |
-| Battle OutRun (Europe).sms | |
-| Battletoads in Battlemaniacs (Brazil).sms | |
-| Black Belt (USA).sms | |
-| Blade Eagle 3-D (USA).sms | |
-| Bomber Raid (USA).sms | |
-| Bonanza Bros. (Europe).sms | |
-| Bram Stoker's Dracula (Europe).sms | |
-| Bubble Bobble (Europe).sms | |
-| Buggy Run (Europe).sms | |
+| Asterix and the Great Rescue (Europe).sms | OK |
+| Asterix and the Secret Mission (Europe).sms |  OK |
+| Astro Warrior (USA).sms | OK |
+| Ayrton Senna's Super Monaco GP II (Europe).sms | OK |
+| Aztec Adventure (USA).sms | OK |
+| Bank Panic (Europe).sms | OK |
+| Batman Returns (Europe).sms | OK |
+| Battle OutRun (Europe).sms | OK |
+| Battletoads in Battlemaniacs (Brazil).sms | OK |
+| Black Belt (USA).sms | OK |
+| Blade Eagle 3-D (USA).sms | OK |
+| Bomber Raid (USA).sms | OK |
+| Bonanza Bros. (Europe).sms | OK |
+| Bram Stoker's Dracula (Europe).sms | OK |
+| Bubble Bobble (Europe).sms | Lot of flicker and bogus pixels |
+| Buggy Run (Europe).sms | OK |
 | California Games (USA).sms | |
 | California Games II (Europe).sms | |
 | Captain Silver (USA).sms | |
