@@ -191,7 +191,11 @@ module video (
 
   // Sprite collision status data
   assign sprite_collision  = (sprite_count > 1);
-  assign too_many_sprites = (num_sprites > 8);
+  // Latched until the control port is read. The scan stops at eight mode-4
+  // sprites (four in the legacy modes), so the counter itself never
+  // passes the limit.
+  reg sprite_overflow = 0;
+  assign too_many_sprites = sprite_overflow;
 
   // Line interrupt down-counter and per-line horizontal scroll latch.
   // Each SMS line is two VGA lines.
@@ -201,6 +205,10 @@ module video (
   reg [7:0] x_scroll_latch;
   wire [8:0] sms_line = vc[9:1];
   wire [8:0] active_lines = lines240 ? 9'd240 : lines224 ? 9'd224 : 9'd192;
+  // The scan builds the list for the next SMS line. Overflow is reported
+  // for active lines only; a ninth sprite in the border does not set it.
+  wire [8:0] next_sms_line = sms_line + 9'd1;
+  wire sprite_limit_line = (next_sms_line >= VB2) && (next_sms_line < VB2 + active_lines);
   // NTSC is 262 SMS lines, two VGA lines each, filling VT. PAL is 313;
   // the extra 51 lines are vertical back porch so a European frame handler
   // can finish streaming sprite tiles and the SAT before the raster reaches
@@ -457,7 +465,20 @@ module video (
   always @(posedge clk) begin
     if (reset) begin
       screen_color <= 0;
+      sprite_overflow <= 0;
+      spritex <= 5'h1f;
+    end else if (!video_on) begin
+      if (status_read) begin
+        sprite_overflow <= 0;
+        spritex <= 5'h1f;
+      end
     end else if (video_on) begin
+      // A hit later in this block is the sprite that overflowed this
+      // cycle, so it stays pending across the read that clears the old one.
+      if (status_read) begin
+        sprite_overflow <= 0;
+        spritex <= 5'h1f;
+      end
       if (mode == 0) begin
         sprite_pixel <= 0;
         num_sprites <= 0;
@@ -563,7 +584,6 @@ module video (
           if (hc == HA - 1 && vc[0] == 1) begin
             num_sprites <= 0;
             sprites_done <= 0;
-            spritex <= 5'h1f;
           end
         end
         // End of active area, fetch data for next line
@@ -583,6 +603,11 @@ module video (
                     num_sprites <= num_sprites + 1;
                   end else begin
                     sprites_done <= 1;
+                    // Status bits 4-0 hold the low 5 bits of the SAT index.
+                    if (sprite_limit_line) begin
+                      sprite_overflow <= 1;
+                      spritex <= hc[6:0] - 7'd2;
+                    end
                   end
                 end
               end
@@ -629,8 +654,11 @@ module video (
                      sprite_num[num_sprites] <= hc[5:1] - 1;
                      num_sprites <= num_sprites + 1;
                    end else begin
-                     spritex <= hc[5:1] - 1;
                      sprites_done <= 1;
+                     if (sprite_limit_line) begin
+                       sprite_overflow <= 1;
+                       spritex <= hc[5:1] - 5'd1;
+                     end
                    end
                 end
               end
