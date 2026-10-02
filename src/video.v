@@ -410,6 +410,12 @@ module video (
   wire [1:0] sprite_index = (hc[5:1] - 1) >> 2;
   wire [7:0] sprite_pat = sprite_pattern[hc[2:0]];
   wire [3:0] sprite_lin = sprite_y_line[hc[2:0]];
+  // Keep this 8 bits wide. A wider compare zero-extends before the
+  // subtract, so Y=$FF never wraps onto the top scanlines.
+  wire [7:0] mode4_sprite_dy = y - vid_out;
+  wire [5:0] mode4_sprite_h =
+      sprite_large ? (sprite_enlarged ? 6'd32 : 6'd16)
+                   : (sprite_enlarged ? 6'd16 : 6'd8);
 
   // Fetch VRAM data and create pixel output
   always @(posedge clk) begin
@@ -532,7 +538,9 @@ module video (
                 vid_addr <= sprite_attr_addr + hc[5:0]; // Address of y attribute
               if (hc >= HA + 2 && hc < SPRITE_SCAN_END + 2 && !sprites_done) begin
                 if (vid_out == 208) sprites_done <= 1;
-                else if (y >= vid_out && y < vid_out + ((sprite_large ? 16 : 8) << sprite_enlarged)) begin
+                // SAT Y is the line above the sprite, so the offset wraps
+                // onto the top of the screen (Y=$FF is scanline 0).
+                else if (mode4_sprite_dy < mode4_sprite_h) begin
                   if (num_sprites < NUM_ACTIVE_SPRITES) begin
                     sprite_num[num_sprites] <= hc[6:0] - 2;
                     sprite_y[num_sprites] <= vid_out;
