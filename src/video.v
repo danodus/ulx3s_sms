@@ -276,8 +276,9 @@ module video (
   wire [8:0] ys = y + r_y_scroll;
   wire [7:0] ysa = ys > y_limit ? ys - 224 : ys;
   wire [4:0] y_char_scroll = x_char >= 24 && disable_vert ? y[7:3] : ysa[7:3];
-
-  wire [2:0] y_scroll_pix = x_char >= 24 && disable_vert ? y[2:0] : y[2:0] + y_scroll[2:0];
+  // Same latched scroll as the tile row. Mixing in the live register
+  // shows the wrong line of each tile for a frame after every write.
+  wire [2:0] y_scroll_pix = x_char >= 24 && disable_vert ? y[2:0] : ysa[2:0];
   
   reg h_flip, palette, back_priority;
 
@@ -321,7 +322,6 @@ module video (
       hc <= 0;
       if (vc == VT - 1) begin
         vc <= 0;
-        r_y_scroll <= y_scroll;
       end else vc <= vc + 1;
     end else hc <= hc + 1;
 
@@ -335,6 +335,12 @@ module video (
       // during the line applies on the following line.
       if (hc == 0 && vc[0] == 0)
         x_scroll_latch <= x_scroll;
+
+      // Latch vertical scroll on the first active line. Writes in blanking
+      // apply to the upcoming frame; writes during the active display wait
+      // until the next one. Sampled before this line fetches tiles.
+      if (hc == 0 && vc[0] == 0 && sms_line == VB2)
+        r_y_scroll <= y_scroll;
 
       if (line_tick) begin
         if (count_line) begin
