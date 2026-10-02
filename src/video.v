@@ -472,7 +472,7 @@ module video (
               for(i=0;i<4;i=i+1) bit_plane[i] <= bit_plane_next[i];
               h_flip <= second_index_byte[1];
               palette <= second_index_byte[3];
-              back_priority = second_index_byte[4];
+              back_priority <= second_index_byte[4];
             end
           end else begin
             // Fetch the font for screen mode 1 to 3
@@ -633,29 +633,33 @@ module video (
 
   // Set the pixel from highest priority plane
   wire [2:0] index = h_flip ? x_scroll_pix : ~x_scroll_pix;
+  wire [3:0] bg_pix4 = {bit_plane[3][index], bit_plane[2][index], bit_plane[1][index], bit_plane[0][index]};
+  // Name-table priority covers sprites only on non-zero tile pixels.
+  wire bg_covers_sprite = (mode == 4) && back_priority && (bg_pix4 != 0);
 
   // Pixel priority
   wire [3:0] pixel_color = mode != 4 && sprite_pixel[0] ? sprite_color[0] : 
                            mode != 4 && sprite_pixel[1] ? sprite_color[1] :
                            mode != 4 && sprite_pixel[2] ? sprite_color[2] :
                            mode != 4 && sprite_pixel[3] ? sprite_color[3] : 
-                           mode == 4 && sprite_pix[0] ? sprite_color4[0] :
-                           mode == 4 && sprite_pix[1] ? sprite_color4[1] :
-                           mode == 4 && sprite_pix[2] ? sprite_color4[2] :
-                           mode == 4 && sprite_pix[3] ? sprite_color4[3] :
-                           mode == 4 && sprite_pix[4] ? sprite_color4[4] :
-                           mode == 4 && sprite_pix[5] ? sprite_color4[5] :
-                           mode == 4 && sprite_pix[6] ? sprite_color4[6] :
-                           mode == 4 && sprite_pix[7] ? sprite_color4[7] :
+                           mode == 4 && !bg_covers_sprite && sprite_pix[0] ? sprite_color4[0] :
+                           mode == 4 && !bg_covers_sprite && sprite_pix[1] ? sprite_color4[1] :
+                           mode == 4 && !bg_covers_sprite && sprite_pix[2] ? sprite_color4[2] :
+                           mode == 4 && !bg_covers_sprite && sprite_pix[3] ? sprite_color4[3] :
+                           mode == 4 && !bg_covers_sprite && sprite_pix[4] ? sprite_color4[4] :
+                           mode == 4 && !bg_covers_sprite && sprite_pix[5] ? sprite_color4[5] :
+                           mode == 4 && !bg_covers_sprite && sprite_pix[6] ? sprite_color4[6] :
+                           mode == 4 && !bg_covers_sprite && sprite_pix[7] ? sprite_color4[7] :
                            mode == 0 ? (font_line[~x_pix] ? text_color : back_color) :
                            mode == 3 ? (x_pix < 4 ? font_line[7:4] : font_line[3:0]) :
-                           mode == 4 ? {bit_plane[3][index], bit_plane[2][index], bit_plane[1][index], bit_plane[0][index]} :
+                           mode == 4 ? bg_pix4 :
                            font_line[~x_pix] ? screen_color[7:4] : screen_color[3:0];
 
-  // Set the 24-bit color value, taking border into account
+  // Set the 24-bit color value, taking border into account.
+  // A priority tile that wins keeps the background palette.
   wire mask_col = x < 8 && mask_col0;
   wire [3:0] col = border || mask_col ? back_color : pixel_color;
-  wire [23:0] color = palette || sprite_pix != 0 || border || mask_col ? colors2[col] : colors1[col];
+  wire [23:0] color = palette || (sprite_pix != 0 && !bg_covers_sprite) || border || mask_col ? colors2[col] : colors1[col];
 
   // Set the 8-bit VGA output signals
   assign vga_r = !vga_de ? 8'b0 : color[23:16];
