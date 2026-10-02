@@ -258,7 +258,7 @@ module sms
   );
 `endif
 
-  assign usb_gamepad_btn = {game_r, game_l, game_d, game_u, game_b, game_a, 1'b0};
+  assign usb_gamepad_btn = {game_r, game_l, game_d, game_u, game_a, game_b, 1'b0};
 
   // ===============================================================
   // Joypad 2 Selection
