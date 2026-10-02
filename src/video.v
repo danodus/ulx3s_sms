@@ -226,14 +226,20 @@ module video (
   // handler treats any V counter >= $5F as the road and would overwrite the
   // sky scroll the frame handler just programmed.
   wire count_line = (sms_line >= VB2) && (sms_line < VB2 + active_lines);
-  // Middle of this SMS line (114 CPU clocks before the next one). Hang-On's
-  // line IRQ handler reads the V counter about 150 T-states after it is
-  // accepted and writes horizontal scroll about 70 later. Starting here keeps
-  // both the read and the write clear of the line boundary.
-  wire line_tick = (hc == 10'd0 && vc[0] == 1'b1);
-  // First blank line, halfway across it. The previous line's handler reads
-  // status early in this line; waiting until here lets that read finish as a
-  // line interrupt before the frame flag is raised.
+  // Start of this SMS line, in the same left-border window as the R8 latch.
+  // On the 315-5124 both happen at HCount $F3, before active pixels, so the
+  // handler has the rest of the line (~228 T-states) to write the scroll for
+  // the next latch. Raised halfway through the line, only 114 T-states
+  // remained. Super Monaco GP II's road handler writes R8 later than that,
+  // so the horizon kept the previous shift and the first footer line took
+  // the shift meant for the last road line.
+  // Hang-On reads the V counter about 150 T-states after the IRQ is accepted
+  // and writes scroll about 70 later. Both still finish before the next latch,
+  // so the sample and the write stay on the same side of the line boundary.
+  wire line_tick = (hc == 10'd0 && vc[0] == 1'b0);
+  // First blank line, halfway across it. The last active line's handler
+  // reads status before this point, so that read still sees a line interrupt.
+  // Waiting until here keeps the frame flag from being raised first.
   wire frame_line = (sms_line == VB2 + active_lines);
   wire frame_tick = (hc == 10'd0 && vc[0] == 1'b1 && frame_line);
 
@@ -355,8 +361,8 @@ module video (
       frame_irq <= 0;
       x_scroll_latch <= 0;
     end else begin
-      // Latch horizontal scroll at the start of the SMS line. A write to R8
-      // during the line applies on the following line.
+      // Latch horizontal scroll at the start of the SMS line, with the line
+      // interrupt above. A write to R8 during the line applies on the next one.
       if (hc == 0 && vc[0] == 0)
         x_scroll_latch <= x_scroll;
 
