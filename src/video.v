@@ -701,9 +701,12 @@ module video (
 
   // Set the 24-bit color value, taking border into account.
   // A priority tile that wins keeps the background palette.
+  // R1 bit 6 low blanks the active picture to the backdrop color.
+  // Fetching stops, but the last tile and sprites would otherwise
+  // stay up while the game rewrites VRAM for a transition.
   wire mask_col = x < 8 && mask_col0;
-  wire [3:0] col = border || mask_col ? back_color : pixel_color;
-  wire [23:0] color = palette || (sprite_pix != 0 && !bg_covers_sprite) || border || mask_col ? colors2[col] : colors1[col];
+  wire [3:0] col = border || mask_col || !video_on ? back_color : pixel_color;
+  wire [23:0] color = palette || (sprite_pix != 0 && !bg_covers_sprite) || border || mask_col || !video_on ? colors2[col] : colors1[col];
 
   // Set the 8-bit VGA output signals
   assign vga_r = !vga_de ? 8'b0 : color[23:16];
