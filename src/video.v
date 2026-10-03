@@ -205,10 +205,15 @@ module video (
   reg [7:0] x_scroll_latch;
   wire [8:0] sms_line = vc[9:1];
   wire [8:0] active_lines = lines240 ? 9'd240 : lines224 ? 9'd224 : 9'd192;
+  // 192-line mode is centered: 24 SMS lines of border above 192.
+  // 224 lines need an 8-line border to fit in 480 VGA lines, and 240
+  // lines fill the frame. Active line 0 stays the vcounter origin.
+  wire [8:0] active_y0 = lines240 ? 9'd0 : lines224 ? 9'd8 : VB2;
+  wire [9:0] v_border = {active_y0, 1'b0};
   // The scan builds the list for the next SMS line. Overflow is reported
   // for active lines only; a ninth sprite in the border does not set it.
   wire [8:0] next_sms_line = sms_line + 9'd1;
-  wire sprite_limit_line = (next_sms_line >= VB2) && (next_sms_line < VB2 + active_lines);
+  wire sprite_limit_line = (next_sms_line >= active_y0) && (next_sms_line < active_y0 + active_lines);
   // NTSC is 262 SMS lines, two VGA lines each, filling VT. PAL is 313;
   // the extra 51 lines are vertical back porch so a European frame handler
   // can finish streaming sprite tiles and the SAT before the raster reaches
@@ -217,8 +222,8 @@ module video (
   wire [9:0] v_total = pal ? (VT + 10'd102) : VT;
   // Offset of this SMS line from the first active line, wrapping at the
   // PAL frame length. Active line 0 is vcounter 0.
-  wire [8:0] pal_off = (sms_line >= VB2) ? (sms_line - VB2)
-                                        : (sms_line + PAL_LINES - VB2);
+  wire [8:0] pal_off = (sms_line >= active_y0) ? (sms_line - active_y0)
+                                        : (sms_line + PAL_LINES - active_y0);
   // PAL 192: 00-F2, BA-FF. 224: 00-FF, 00-02, CA-FF. 240: 00-FF, 00-0A, D2-FF.
   wire [7:0] pal_vc_192 = (pal_off < 9'd243) ? pal_off[7:0]
                                              : (8'hBA + (pal_off - 9'd243));
@@ -233,7 +238,7 @@ module video (
   // Active lines only. The next line is the frame interrupt; Hang-On's line
   // handler treats any V counter >= $5F as the road and would overwrite the
   // sky scroll the frame handler just programmed.
-  wire count_line = (sms_line >= VB2) && (sms_line < VB2 + active_lines);
+  wire count_line = (sms_line >= active_y0) && (sms_line < active_y0 + active_lines);
   // Start of this SMS line, in the same left-border window as the R8 latch.
   // On the 315-5124 both happen at HCount $F3, before active pixels, so the
   // handler has the rest of the line (~228 T-states) to write the scroll for
@@ -248,7 +253,7 @@ module video (
   // First blank line, halfway across it. The last active line's handler
   // reads status before this point, so that read still sees a line interrupt.
   // Waiting until here keeps the frame flag from being raised first.
-  wire frame_line = (sms_line == VB2 + active_lines);
+  wire frame_line = (sms_line == active_y0 + active_lines);
   wire frame_tick = (hc == 10'd0 && vc[0] == 1'b1 && frame_line);
 
   // Both interrupts stay asserted until the status port is read.
@@ -263,7 +268,7 @@ module video (
 
   // Set x and y to screen pixel coordinates. x not valid in text mode
   wire [7:0] x = hc[9:1] - HB2;
-  wire [7:0] y = vc[9:1] - VB2;
+  wire [7:0] y = sms_line - active_y0;
 
   // NTSC keeps the linear counter Hang-On samples from the line IRQ.
   // PAL games read the wrapped blanking sequence to pace VRAM updates.
@@ -281,7 +286,7 @@ module video (
   // Calculate the border
   wire [9:0] hb_adj = (mode == 0 ? HBadj : 0);
   wire hBorder = (hc < (HB + hb_adj) || hc >= HA - HB - hb_adj);
-  wire vBorder = (vc < VB || vc >= VA - VB);
+  wire vBorder = (vc < v_border || vc >= VA - v_border);
   wire border = hBorder || vBorder;
 
   // Sprite data for modes 2 and 3
@@ -310,9 +315,11 @@ module video (
 
   wire [2:0] x_scroll_pix = y < 16 && disable_horiz ? x_pix : x_pix - x_scroll_latch[2:0];
 
-  wire [7:0] y_limit = (lines240 | lines224) ? 255 : 223;
-  wire [8:0] ys = y + r_y_scroll;
-  wire [7:0] ysa = ys > y_limit ? ys - 224 : ys;
+  // 192-line nametable is 28 rows and wraps at 224. 224/240-line
+  // mode is 32 rows and wraps at 256.
+  wire [8:0] ys = {1'b0, y} + {1'b0, r_y_scroll};
+  wire [7:0] ysa = (lines224 | lines240) ? ys[7:0] :
+                   (ys >= 9'd224) ? ys[7:0] - 8'd224 : ys[7:0];
   wire [4:0] y_char_scroll = x_char >= 24 && disable_vert ? y[7:3] : ysa[7:3];
   // Same latched scroll as the tile row. Mixing in the live register
   // shows the wrong line of each tile for a frame after every write.
@@ -377,7 +384,7 @@ module video (
       // Latch vertical scroll on the first active line. Writes in blanking
       // apply to the upcoming frame; writes during the active display wait
       // until the next one. Sampled before this line fetches tiles.
-      if (hc == 0 && vc[0] == 0 && sms_line == VB2)
+      if (hc == 0 && vc[0] == 0 && sms_line == active_y0)
         r_y_scroll <= y_scroll;
 
       if (line_tick) begin
@@ -593,7 +600,9 @@ module video (
               if (hc >= HA && hc < SPRITE_SCAN_END)
                 vid_addr <= sprite_attr_addr + hc[5:0]; // Address of y attribute
               if (hc >= HA + 2 && hc < SPRITE_SCAN_END + 2 && !sprites_done) begin
-                if (vid_out == 208) sprites_done <= 1;
+                // Y=$D0 ends the list in 192-line mode only. In 224/240
+                // that Y is a real sprite position.
+                if (vid_out == 208 && !(lines224 || lines240)) sprites_done <= 1;
                 // SAT Y is the line above the sprite, so the offset wraps
                 // onto the top of the screen (Y=$FF is scanline 0).
                 else if (mode4_sprite_dy < mode4_sprite_h) begin
