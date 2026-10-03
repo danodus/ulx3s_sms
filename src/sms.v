@@ -162,6 +162,13 @@ module sms
 
   reg [7:0]   slot0, slot1, slot2;
   reg [7:0]   mem_misc;
+  // Codemasters carts bank through $0000/$4000/$8000 and power up
+  // with slot 2 on bank 0. load_rom.py sends the type.
+`ifdef SYNTHESIS
+  wire        codemasters;
+`else
+  reg         codemasters = 1'b0;
+`endif
   
   // ===============================================================
   // System Clock generation
@@ -329,6 +336,7 @@ module sms
     .rxd(ftdi_txd),
     .txd(ftdi_rxd),
     .load_done(load_done),
+    .codemasters(codemasters),
     .weB(loader_we),
     .addrB(loader_addr),
     .dinB(loader_data),
@@ -423,11 +431,28 @@ module sms
   reg [7:0] game_rom [0:524287];  // max: 512kB
   initial begin
     integer file, r;
+    reg [15:0] cm_word, cm_comp;
     file = $fopen("cart.rom", "rb");
     r = $fread(game_rom, file);
     rom_len = r;
     $display("Nb bytes read: %d", r);
     $fclose(file);
+    // load_rom.py tells the serial loader which mapper this is. The
+    // sim reads the file itself, so it repeats that test here.
+    if (r > 32'h7FFF) begin
+      cm_word = {game_rom[32'h7FE7], game_rom[32'h7FE6]};
+      cm_comp = {game_rom[32'h7FE9], game_rom[32'h7FE8]};
+      codemasters = (cm_word != 16'd0) && ((cm_word + cm_comp) == 16'd0) &&
+                    (game_rom[32'h7FEA] == 8'd0) && (game_rom[32'h7FEB] == 8'd0) &&
+                    (game_rom[32'h7FEC] == 8'd0) && (game_rom[32'h7FED] == 8'd0) &&
+                    (game_rom[32'h7FEE] == 8'd0) && (game_rom[32'h7FEF] == 8'd0) &&
+                    (game_rom[32'h7FF0] == 8'h54) && (game_rom[32'h7FF1] == 8'h4D) &&
+                    (game_rom[32'h7FF2] == 8'h52) && (game_rom[32'h7FF3] == 8'h20) &&
+                    (game_rom[32'h7FF4] == 8'h53) && (game_rom[32'h7FF5] == 8'h45) &&
+                    (game_rom[32'h7FF6] == 8'h47) && (game_rom[32'h7FF7] == 8'h41);
+    end
+    if (codemasters)
+      $display("Codemasters mapper");
   end
   // Low 19 bits: the array is 512KB. cart_addr already mirrors at rom_len.
   assign romOut = game_rom[cart_addr[18:0]];
@@ -462,7 +487,12 @@ module sms
   wire        m3 = r_vdp[1][3];
   wire        m4 = r_vdp[0][2];
   wire [2:0]  mode = m4 ? 4 : m3 ? 3 : m2 ? 2 : m1 ? 1 : 0;
-  wire [13:0] name_table_addr = {r_vdp[2][3:1], 11'b0};
+  // 224/240-line mode ignores bit 1 of R2 and adds $0700, so a value
+  // of $0E addresses $3700. The 192-line decode of the same value is
+  // $3800, four tile rows below the map the game filled in.
+  wire        vdp_extended = r_vdp[0][1] & (r_vdp[1][3] | r_vdp[1][4]);
+  wire [13:0] name_table_addr = vdp_extended ? ({r_vdp[2][3:2], 12'b0} | 14'h0700)
+                                             : {r_vdp[2][3:1], 11'b0};
   wire [13:0] color_table_addr = mode == 2 ? {r_vdp[3][7], 13'b0} : {r_vdp[3], 6'b0};
   wire [13:0] font_addr = mode == 4 ? 0 : mode == 2 ? {r_vdp[4][2],13'b0} : {r_vdp[4], 11'b0};
   wire [13:0] sprite_attr_addr = {r_vdp[5][6:1], 8'b0};
@@ -485,7 +515,7 @@ module sms
       r_mem_ctrl <= 8'hf7;
       slot0 <= 0;
       slot1 <= 1;
-      slot2 <= 2;
+      slot2 <= codemasters ? 8'd0 : 8'd2;
       mem_misc <= 0;
       r_joy_ctrl <= 0;
     end else if (cpuClockEdge) begin
@@ -508,19 +538,35 @@ module sms
             cram_selected <= 1;
           end else if (cpuDataOut[7:6] == 2 && cpuDataOut[3:0] < 11) begin
             r_vdp[cpuDataOut[3:0]] <= first_addr_byte;
+            // A register write still loads the address register.
+            vga_addr[13:8] <= cpuDataOut[5:0];
           end else begin 
             vga_addr <= first_addr_byte[5:0];
             cram_selected <= 1;
           end
-        end else
+        end else begin
+          // The low address byte is live after the first control write.
+          // Cosmic Spacehead stores a byte before sending the high half.
           first_addr_byte <= cpuDataOut;
+          vga_addr[7:0] <= cpuDataOut;
+        end
       end else if (mem_ctrl_port && n_ioWR == 1'b0) begin
         r_mem_ctrl <= cpuDataOut; // Memory control write
       end else if (joypad_ctrl_port && n_ioWR == 1'b0) begin
         r_joy_ctrl <= cpuDataOut;
       end
 
-      if (cpuAddress == 16'hfffc && n_memWR == 1'b0) mem_misc <= cpuDataOut;
+      // Codemasters mirrors the bank register across each 16KB slot.
+      // Sega uses $FFFC-$FFFF, and those writes also land in RAM.
+      if (codemasters) begin
+        if (n_memWR == 1'b0)
+          case (cpuAddress[15:14])
+            2'd0: slot0 <= cpuDataOut;
+            2'd1: slot1 <= cpuDataOut;
+            2'd2: slot2 <= cpuDataOut;
+            default: ;
+          endcase
+      end else if (cpuAddress == 16'hfffc && n_memWR == 1'b0) mem_misc <= cpuDataOut;
       else if (cpuAddress == 16'hfffd && n_memWR == 1'b0) slot0 <= cpuDataOut;
       else if (cpuAddress == 16'hfffe && n_memWR == 1'b0) slot1 <= cpuDataOut;
       else if (cpuAddress == 16'hffff && n_memWR == 1'b0) slot2 <= cpuDataOut;

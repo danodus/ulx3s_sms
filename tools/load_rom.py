@@ -12,6 +12,27 @@ except ImportError:
 
 BAUD = 921600
 MAX_LEN = 4 * 1024 * 1024
+MAP_SEGA = 0
+MAP_CODEMASTERS = 1
+
+
+def mapper_type(data):
+    """Codemasters header at $7FE0: a nonzero checksum, its 16-bit
+    complement, six zero bytes, then TMR SEGA. A zero checksum is
+    rejected so a blank gap in front of a Sega header (Sonic) is
+    not treated as this mapper.
+    """
+    if len(data) <= 0x7FFF:
+        return MAP_SEGA
+    word = int.from_bytes(data[0x7FE6:0x7FE8], "little")
+    comp = int.from_bytes(data[0x7FE8:0x7FEA], "little")
+    if word == 0 or (word + comp) & 0xFFFF != 0:
+        return MAP_SEGA
+    if data[0x7FEA:0x7FF0] != b"\x00" * 6:
+        return MAP_SEGA
+    if data[0x7FF0:0x7FF8] != b"TMR SEGA":
+        return MAP_SEGA
+    return MAP_CODEMASTERS
 
 
 def main():
@@ -29,11 +50,12 @@ def main():
     if len(data) > MAX_LEN:
         sys.exit(f"{args.rom} is {len(data)} bytes; the loader accepts at most {MAX_LEN}")
 
-    checksum = 0
+    mapper = mapper_type(data)
+    checksum = mapper
     for byte in data:
         checksum ^= byte
 
-    frame = b"L" + len(data).to_bytes(4, "big") + data + bytes([checksum])
+    frame = b"L" + len(data).to_bytes(4, "big") + bytes([mapper]) + data + bytes([checksum & 0xFF])
     # One byte is 10 bit times. Leave room for the FPGA to answer after the last byte.
     ack_timeout = max(2.0, (len(frame) * 10) / BAUD + 2.0)
 
@@ -60,7 +82,8 @@ def main():
         while time.monotonic() < deadline:
             reply = ser.read(1)
             if reply == b"K":
-                print(f"loaded {len(data)} bytes")
+                kind = "Codemasters" if mapper else "Sega"
+                print(f"loaded {len(data)} bytes ({kind} mapper)")
                 return
             if reply == b"E":
                 sys.exit("FPGA rejected the transfer")

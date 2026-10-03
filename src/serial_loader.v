@@ -2,7 +2,9 @@
 // USB-serial cartridge loader.
 //
 // While waiting, sends 'R' immediately and then about every 200 ms.
-// Host frame: 'L', 32-bit big-endian length, payload, XOR of the payload.
+// Host frame: 'L', 32-bit big-endian length, mapper byte, payload,
+// XOR of the mapper byte and the payload.
+// Mapper 0 is Sega, 1 is Codemasters. Any other value is rejected.
 // Length must be 1 .. 4 MiB. A match replies 'K' and sets load_done.
 // Anything else replies 'E' and waits for another frame.
 // Baud is 921600 8N1 at a 25 MHz clock (27 cycles per bit).
@@ -14,6 +16,7 @@ module serial_loader
   input  wire        rxd,
   output wire        txd,
   output reg         load_done,
+  output reg         codemasters,
   output wire        weB,
   output wire [23:0] addrB,
   output wire [7:0]  dinB,
@@ -28,10 +31,10 @@ module serial_loader
   localparam [2:0]
     S_WAIT  = 3'd0,
     S_LEN   = 3'd1,
-    S_DATA  = 3'd2,
-    S_CKSUM = 3'd3,
-    S_REPLY = 3'd4,
-    S_DONE  = 3'd5;
+    S_MAP   = 3'd2,
+    S_DATA  = 3'd3,
+    S_CKSUM = 3'd4,
+    S_REPLY = 3'd5;
 
   // ----------------------------------------------------------------
   // RX synchronizer
@@ -154,6 +157,7 @@ module serial_loader
   reg [7:0]  rom_xor = 8'd0;
   reg        reply_ok = 1'b0;
   reg        reply_armed = 1'b0;
+  reg        map_ok = 1'b0;
   reg [22:0] beacon_cnt = R_PERIOD;
   wire [31:0] len_next = {rom_len[23:0], hold_data};
 
@@ -164,6 +168,7 @@ module serial_loader
     if (reset) begin
       state        <= S_WAIT;
       load_done    <= 1'b0;
+      codemasters  <= 1'b0;
       hold_valid   <= 1'b0;
       loader_write <= 2'd0;
       loader_cnt   <= 1'b0;
@@ -174,6 +179,7 @@ module serial_loader
       rom_xor      <= 8'd0;
       reply_ok     <= 1'b0;
       reply_armed  <= 1'b0;
+      map_ok       <= 1'b0;
       beacon_cnt   <= R_PERIOD;
     end else begin
       if (!cpuClockEnable && old_ce && loader_write == 2'd1) begin
@@ -201,10 +207,11 @@ module serial_loader
           if (hold_valid) begin
             hold_valid <= 1'b0;
             if (hold_data == 8'h4C) begin // 'L'
-              state   <= S_LEN;
-              len_idx <= 2'd0;
-              rom_len <= 32'd0;
-              load_done <= 1'b0;
+              state       <= S_LEN;
+              len_idx     <= 2'd0;
+              rom_len     <= 32'd0;
+              load_done   <= 1'b0;
+              codemasters <= 1'b0;
             end
           end
         end
@@ -222,12 +229,23 @@ module serial_loader
                 state    <= S_REPLY;
               end else begin
                 rom_len <= len_next;
-                state   <= S_DATA;
+                state   <= S_MAP;
               end
             end else begin
               rom_len <= len_next;
               len_idx <= len_idx + 2'd1;
             end
+          end
+        end
+
+        S_MAP: begin
+          if (hold_valid) begin
+            hold_valid  <= 1'b0;
+            // Checksum covers the mapper byte and the payload.
+            rom_xor     <= hold_data;
+            map_ok      <= (hold_data == 8'h00 || hold_data == 8'h01);
+            codemasters <= (hold_data == 8'h01);
+            state       <= S_DATA;
           end
         end
 
@@ -247,7 +265,7 @@ module serial_loader
         S_CKSUM: begin
           if (hold_valid && loader_write == 2'd0) begin
             hold_valid  <= 1'b0;
-            reply_ok    <= (hold_data == rom_xor);
+            reply_ok    <= map_ok && (hold_data == rom_xor);
             reply_armed <= 1'b0;
             state       <= S_REPLY;
           end

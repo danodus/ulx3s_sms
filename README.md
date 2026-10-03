@@ -24,7 +24,7 @@ There are lots of games on the [planetemu](https://www.planetemu.net/roms/sega-m
 
 It is written entirely in Verilog. The top level and VDP implementation are new.
 
-The rom cartridge is loaded into the SDRAM and executed from there, using the Sega mapper. The few games that do not use the Sega mapper will not work.
+The rom cartridge is loaded into the SDRAM and executed from there. `tools/load_rom.py` checks for a Codemasters header and tells the core which mapper to use; everything else uses the Sega mapper.
 
 The VDP implementation generates VGA output, which is then converted to HDMI. It does not use the timing of the original VDP chip. Legacy modes compatible with Texas Instruments TMS9918 chip are implemented for compatibility with the Sega SG 1000.
 

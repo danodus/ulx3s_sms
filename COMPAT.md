@@ -32,19 +32,19 @@
 | Bram Stoker's Dracula (Europe).sms | OK |
 | Bubble Bobble (Europe).sms | Lot of flicker and bogus pixels |
 | Buggy Run (Europe).sms | OK |
-| California Games (USA).sms | |
-| California Games II (Europe).sms | |
-| Captain Silver (USA).sms | |
-| Castle of Illusion Starring Mickey Mouse (USA) (Rev-A).sms | |
-| Chase H.Q. (Europe).sms | |
-| Cheese Cat-Astrophe Starring Speedy Gonzales (Europe).sms | |
-| Choplifter (USA).sms | |
-| Chuck Rock (Europe).sms | |
-| Chuck Rock II - Son of Chuck (Europe).sms | |
-| Cloud Master (USA).sms | |
-| Columns (USA).sms | |
-| Cool Spot (Europe).sms | |
-| Cosmic Spacehead (Europe).sms | |
+| California Games (USA).sms | Visible dark garbage in transition screen |
+| California Games II (Europe).sms | OK |
+| Captain Silver (USA).sms | OK (requires PAL) |
+| Castle of Illusion Starring Mickey Mouse (USA) (Rev-A).sms | OK (requires NTSC) |
+| Chase H.Q. (Europe).sms | OK |
+| Cheese Cat-Astrophe Starring Speedy Gonzales (Europe).sms | OK (sound issues also present in Meka) |
+| Choplifter (USA).sms | OK |
+| Chuck Rock (Europe).sms | OK |
+| Chuck Rock II - Son of Chuck (Europe).sms | OK |
+| Cloud Master (USA).sms | OK |
+| Columns (USA).sms | OK |
+| Cool Spot (Europe).sms | OK |
+| Cosmic Spacehead (Europe).sms | OK (Codemasters mapper) |
 | Cyber Shinobi, The (Europe).sms | |
 | Cyborg Hunter (USA).sms | |
 | Daffy Duck in Hollywood (Europe).sms | |
@@ -69,7 +69,7 @@
 | Enduro Racer (USA).sms | |
 | ESWAT (USA) (Rev-A).sms | |
 | F1 (Europe).sms | |
-| Fantastic Dizzy (Europe).sms | |
+| Fantastic Dizzy (Europe).sms | (Codemasters mapper) |
 | Fantasy Zone - The Maze (USA).sms | |
 | Fantasy Zone (USA) (Rev-A).sms | |
 | Fantasy Zone II - The Tears of Opa-Opa (USA).sms | |
@@ -122,7 +122,7 @@
 | Mercs (Europe).sms | |
 | Michael Jackson's Moonwalker (USA).sms | |
 | Mickey's Ultimate Challenge (Brazil).sms | |
-| Micro Machines (Europe).sms | |
+| Micro Machines (Europe).sms | (Codemasters mapper) |
 | Miracle Warriors - Seal of the Dark Lord (USA).sms | |
 | Missile Defense 3-D (USA).sms | |
 | Monopoly (USA).sms | |
