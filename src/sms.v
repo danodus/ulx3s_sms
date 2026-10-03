@@ -70,7 +70,10 @@ module sms
   wire vdp_data_port = cpuAddress[7:6] == 2 && !cpuAddress[0];
   wire vdp_ctrl_port = cpuAddress[7:6] == 2 && cpuAddress[0];
 
-  wire psg_write_port = cpuAddress[7:6] == 1 && cpuAddress[0];
+  // The PSG ignores A0, so a write anywhere in $40-$7F reaches it.
+  // Codemasters (Cosmic Spacehead, Micro Machines, Fantastic Dizzy)
+  // write the sound data to $7E. Reads of $7E/$7F are still the counters.
+  wire psg_write_port = cpuAddress[7:6] == 1;
 
   wire joypad_0_port = cpuAddress[7:6] == 3 && !cpuAddress[0];
   wire joypad_1_port = cpuAddress[7:6] == 3 && cpuAddress[0];
