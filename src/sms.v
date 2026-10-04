@@ -382,6 +382,20 @@ module sms
     .dout(ramOut)
   );
 
+  // Cartridge RAM. $FFFC bit 3 maps it over slot 2 ($8000-$BFFF),
+  // in place of the ROM bank. Desert Speedtrap has 8KB of this and
+  // no battery: it decompresses a tileset here, then copies the buffer
+  // to VRAM. A13 is not wired on an 8KB chip, so $A000 mirrors $8000.
+  wire        cart_ram_sel = mem_misc[3] && !codemasters && cpuAddress[15:14] == 2'd2;
+  wire [7:0]  cartRamOut;
+  ram cart_ram (
+    .clk(cpuClock),
+    .we(cart_ram_sel && !n_memWR),
+    .addr(cpuAddress[12:0]),
+    .din(cpuDataOut),
+    .dout(cartRamOut)
+  );
+
   // ===============================================================
   // GAME ROM (uses SDRAM)
   // ===============================================================
@@ -678,8 +692,9 @@ module sms
                       // V and H counters
                       v_counter_port && n_ioRD == 1'b0 ? v_counter :
                       h_counter_port && n_ioRD == 1'b0 ? h_counter :
-                      cpuAddress[15:14] < 3 && n_memRD == 1'b0 ? 
-                        (r_mem_ctrl[3] == 0 ? biosOut : romOut) : ramOut;
+                      cpuAddress[15:14] < 3 && n_memRD == 1'b0 ?
+                        (r_mem_ctrl[3] == 0 ? biosOut :
+                         cart_ram_sel ? cartRamOut : romOut) : ramOut;
 
   // Sprite collision interrupt
   always @(posedge cpuClock) begin
