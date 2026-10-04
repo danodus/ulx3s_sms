@@ -45,24 +45,24 @@
 | Columns (USA).sms | OK |
 | Cool Spot (Europe).sms | OK |
 | Cosmic Spacehead (Europe).sms | OK (Codemasters mapper) |
-| Cyber Shinobi, The (Europe).sms | |
-| Cyborg Hunter (USA).sms | |
-| Daffy Duck in Hollywood (Europe).sms | |
-| Danan - The Jungle Fighter (Europe).sms | |
-| Deep Duck Trouble Starring Donald Duck (Europe).sms | |
-| Desert Speedtrap Starring Road Runner and Wile E. Coyote (Europe).sms | |
-| Desert Strike - Return to the Gulf (Europe).sms | |
-| Disney's Aladdin (Europe).sms | |
-| Disney's Ariel the Little Mermaid (Brazil).sms | |
-| Disney's Bonkers Wax Up! (Brazil).sms | |
-| Disney's The Jungle Book (Europe).sms | |
-| Double Dragon (USA).sms | |
-| Double Hawk (Europe).sms | |
-| Dr. Robotnik's Mean Bean Machine (Europe).sms | |
-| Dragon Crystal (Europe).sms | |
-| Dynamite Duke (Europe).sms | |
-| Dynamite Dux (Europe).sms | |
-| Dynamite Headdy (Brazil).sms | |
+| Cyber Shinobi, The (Europe).sms | OK |
+| Cyborg Hunter (USA).sms | OK |
+| Daffy Duck in Hollywood (Europe).sms | OK |
+| Danan - The Jungle Fighter (Europe).sms | OK |
+| Deep Duck Trouble Starring Donald Duck (Europe).sms | OK |
+| Desert Speedtrap Starring Road Runner and Wile E. Coyote (Europe).sms | OK |
+| Desert Strike - Return to the Gulf (Europe).sms | OK |
+| Disney's Aladdin (Europe).sms | Bogus pixels on lines with multiple sprites |
+| Disney's Ariel the Little Mermaid (Brazil).sms | OK |
+| Disney's Bonkers Wax Up! (Brazil).sms | OK |
+| Disney's The Jungle Book (Europe).sms | OK (Requires PAL) |
+| Double Dragon (USA).sms | OK |
+| Double Hawk (Europe).sms | Bogus white lines at the level of the crosshair below enemies above |
+| Dr. Robotnik's Mean Bean Machine (Europe).sms | OK |
+| Dragon Crystal (Europe).sms | OK |
+| Dynamite Duke (Europe).sms | OK |
+| Dynamite Dux (Europe).sms | Bogus line flickering near player |
+| Dynamite Headdy (Brazil).sms | OK |
 | Earthworm Jim (Brazil).sms | |
 | Ecco - The Tides of Time (Brazil).sms | |
 | Ecco the Dolphin (Europe).sms | |
