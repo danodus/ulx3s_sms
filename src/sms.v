@@ -364,20 +364,23 @@ module sms
   assign game2_sta = 1'b0;
 `endif
 
-  // Select returns to the ROM menu. Start toggles PAL/NTSC.
-  // Either pad can do both. Player 1 directions stay on port $DC.
-  wire any_sel = game_sel | game2_sel;
-  wire any_sta = game_sta | game2_sta;
-  // Same packing as player 1, sampled on the CPU clock: [5] right,
-  // [4] left, [3] down, [2] up, [1] A, [0] B.
+  // Player 1 directions stay on port $DC. Same packing as player 1,
+  // sampled on the CPU clock: [5] right, [4] left, [3] down, [2] up,
+  // [1] A, [0] B.
   reg [5:0] p2_joy = 6'b0;
   always @(posedge cpuClock)
     p2_joy <= {game2_r, game2_l, game2_d, game2_u, game2_a, game2_b};
   reg joypad2 = 1'b0;
 
-  // START toggles PAL (313 lines) and NTSC (262). Power-up is NTSC,
-  // which is what SW1 off used to select. The DIP switches are unused.
+  // PAL is 313 lines, NTSC is 262. Power-up is NTSC, which is what SW1
+  // off used to select. The DIP switches are unused. While a game is
+  // running, START is the pause button and holding SELECT for two
+  // seconds toggles this. A shorter SELECT returns to the ROM menu.
+  // In the menu, START toggles it.
   reg pal_mode = 1'b0;
+  // Pause NMI. Held low for the whole START press, and kept high in
+  // reset and in the menu.
+  reg nmi_n = 1'b1;
 
   // ===============================================================
   // CPU
@@ -431,38 +434,120 @@ module sms
   endfunction
 
 `ifdef SYNTHESIS
-  // Power-up, the power button, and Select (while a game is running)
-  // return to the ROM menu. The Z80 stays reset until a ROM is loaded.
-  // A USB upload also holds it in reset, then boots that ROM, including
-  // when the previous ROM came from the SD menu.
+  // Power-up and the power button return to the ROM menu. Select
+  // does too, unless it was held for two seconds, which toggles
+  // PAL/NTSC instead. The Z80 stays reset until a ROM is loaded. A
+  // USB upload also holds it in reset, then boots that ROM, including
+  // when the previous ROM came from the SD menu. Each pad is separate.
   reg menu_req = 1'b0;
-  reg wait_sel_release = 1'b0;
+  reg wait_sta1 = 1'b0;
+  reg wait_sta2 = 1'b0;
+  reg nmi_pad1 = 1'b0;
+  reg nmi_pad2 = 1'b0;
+  reg sel1_down = 1'b0;
+  reg sel2_down = 1'b0;
+  reg sel1_fired = 1'b0;
+  reg sel2_fired = 1'b0;
+  // Two seconds at the 25 MHz CPU clock.
+  localparam [25:0] SEL_HOLD = 26'd50_000_000;
+  reg [25:0] sel1_cnt = 26'd0;
+  reg [25:0] sel2_cnt = 26'd0;
+  // The HID host registers the pads on the USB clock, so two flops
+  // close the crossing.
+  reg [1:0] sta1_sync = 2'b0;
+  reg [1:0] sta2_sync = 2'b0;
+  reg [1:0] sel1_sync = 2'b0;
+  reg [1:0] sel2_sync = 2'b0;
   always @(posedge cpuClock) begin
-    menu_req <= 1'b0;
-    if (!pwr_up_reset_n)
-      wait_sel_release <= 1'b0;
-    else if (any_sel && !wait_sel_release && load_done) begin
-      menu_req <= 1'b1;
-      wait_sel_release <= 1'b1;
-    end else if (!any_sel)
-      wait_sel_release <= 1'b0;
+    sta1_sync <= {sta1_sync[0], game_sta};
+    sta2_sync <= {sta2_sync[0], game2_sta};
+    sel1_sync <= {sel1_sync[0], game_sel};
+    sel2_sync <= {sel2_sync[0], game2_sel};
+    menu_req  <= 1'b0;
+
+    if (!pwr_up_reset_n) begin
+      wait_sta1 <= 1'b0;
+      wait_sta2 <= 1'b0;
+      nmi_pad1  <= 1'b0;
+      nmi_pad2  <= 1'b0;
+      sel1_down <= 1'b0;
+      sel2_down <= 1'b0;
+      sel1_fired <= 1'b0;
+      sel2_fired <= 1'b0;
+      sel1_cnt  <= 26'd0;
+      sel2_cnt  <= 26'd0;
+    end else begin
+      if (sta1_sync[1] && !wait_sta1) begin
+        wait_sta1 <= 1'b1;
+        if (loader_menu)
+          pal_mode <= ~pal_mode;
+        else
+          nmi_pad1 <= 1'b1;
+      end else if (!sta1_sync[1]) begin
+        wait_sta1 <= 1'b0;
+        nmi_pad1  <= 1'b0;
+      end
+
+      if (sta2_sync[1] && !wait_sta2) begin
+        wait_sta2 <= 1'b1;
+        if (loader_menu)
+          pal_mode <= ~pal_mode;
+        else
+          nmi_pad2 <= 1'b1;
+      end else if (!sta2_sync[1]) begin
+        wait_sta2 <= 1'b0;
+        nmi_pad2  <= 1'b0;
+      end
+
+      // Count while SELECT is held. At two seconds, toggle once and
+      // do not return to the menu when the button is released. A
+      // shorter press requests the menu on release.
+      if (sel1_sync[1] && load_done) begin
+        sel1_down <= 1'b1;
+        if (!sel1_fired) begin
+          if (sel1_cnt >= SEL_HOLD - 26'd1) begin
+            sel1_fired <= 1'b1;
+            pal_mode <= ~pal_mode;
+          end else
+            sel1_cnt <= sel1_cnt + 26'd1;
+        end
+      end else begin
+        if (sel1_down && !sel1_fired && load_done)
+          menu_req <= 1'b1;
+        sel1_down <= 1'b0;
+        sel1_fired <= 1'b0;
+        sel1_cnt <= 26'd0;
+      end
+
+      if (sel2_sync[1] && load_done) begin
+        sel2_down <= 1'b1;
+        if (!sel2_fired) begin
+          if (sel2_cnt >= SEL_HOLD - 26'd1) begin
+            sel2_fired <= 1'b1;
+            pal_mode <= ~pal_mode;
+          end else
+            sel2_cnt <= sel2_cnt + 26'd1;
+        end
+      end else begin
+        if (sel2_down && !sel2_fired && load_done)
+          menu_req <= 1'b1;
+        sel2_down <= 1'b0;
+        sel2_fired <= 1'b0;
+        sel2_cnt <= 26'd0;
+      end
+
+      // Drop pause when the menu returns, even if START is still held.
+      // The wait latch stays set until release, so the next ROM does
+      // not see a new edge.
+      if (loader_menu) begin
+        nmi_pad1 <= 1'b0;
+        nmi_pad2 <= 1'b0;
+      end
+    end
+
+    nmi_n <= (pwr_up_reset_n && !loader_menu && (nmi_pad1 || nmi_pad2)) ? 1'b0 : 1'b1;
   end
   wire loader_reset = !pwr_up_reset_n | !btn[0] | menu_req;
-
-  // One toggle per press. Sampled on the CPU clock; the HID host
-  // registers START on the USB clock, so two flops close the crossing.
-  reg [1:0] sta_sync = 2'b0;
-  reg wait_sta_release = 1'b0;
-  always @(posedge cpuClock) begin
-    sta_sync <= {sta_sync[0], any_sta};
-    if (!pwr_up_reset_n)
-      wait_sta_release <= 1'b0;
-    else if (sta_sync[1] && !wait_sta_release) begin
-      pal_mode <= ~pal_mode;
-      wait_sta_release <= 1'b1;
-    end else if (!sta_sync[1])
-      wait_sta_release <= 1'b0;
-  end
   serial_loader
   serial_loader_inst
   (
@@ -547,7 +632,7 @@ module sms
     //.wait_n(!R_btn_joy[1]),
     .wait_n(1'b1),
     .int_n(n_int),
-    .nmi_n(1'b1),
+    .nmi_n(nmi_n),
     .busrq_n(1'b1),
     .mreq_n(n_MREQ),
     .m1_n(n_M1),
@@ -821,7 +906,7 @@ module sms
     .lines224(r_vdp[0][1] & r_vdp[1][4]),
     .lines240(r_vdp[0][1] & r_vdp[1][3]),
     .mask_col0(r_vdp[0][5]),
-    // pal_mode (START): PAL, 313 lines. European games such as The
+    // pal_mode: PAL, 313 lines. European games such as The
     // Addams Family stream the player sprites and the top HUD during
     // blanking and do not finish in an NTSC frame, so the raster samples
     // a half-written SAT.
