@@ -32,7 +32,7 @@ It is written entirely in Verilog. The top level and VDP implementation are new.
 
 The rom cartridge is loaded into the SDRAM and executed from there. `tools/load_rom.py` checks for a Codemasters header and tells the core which mapper to use; everything else uses the Sega mapper.
 
-The VDP implementation generates a 640x480 raster. HDMI timing comes from that raster, including the SW1 PAL frame (626 lines instead of 524). It does not use the timing of the original VDP chip. Legacy modes compatible with Texas Instruments TMS9918 chip are implemented for compatibility with the Sega SG 1000.
+The VDP implementation generates a 640x480 raster. HDMI timing comes from that raster, including the PAL frame (626 lines instead of 524) selected with START. It does not use the timing of the original VDP chip. Legacy modes compatible with Texas Instruments TMS9918 chip are implemented for compatibility with the Sega SG 1000.
 
 PSG audio is sent as signed 16-bit HDMI LPCM at 48 kHz, the same mono sample on both channels.
 
@@ -54,13 +54,13 @@ This builds the RV32 SD menu firmware, then synthesizes the bitstream.
 
 It currently defaults to an 85F board. To use a 12F add `DEVICE = 12k` to the Makefile.
 
-You can select the PAL mode with SW1. OFF=NTSC (262 lines), ON=PAL (313 lines). Note that the unlike the real hardware the CPU clock speed is the same for both.
+Press START on the USB gamepad to toggle the video standard. Power-up is NTSC (262 lines). Each press switches to PAL (313 lines) and back. D4 lights while PAL is selected. Unlike the real hardware, the CPU clock speed is the same for both.
 
 ## USB Gamepad
 
 A USB gamepad can be connected to US2 using a USB-OTG adapter.  When detected, both D6 and D7 LEDs will be ON.  With my Kiwitata SNES controller, the detection is not reliable.  This is a known issue with the USB HID host I'm using (https://github.com/nand2mario/usb_hid_host/issues/5).
 
-Press Select on the gamepad while a game is running to return to the SD card ROM menu.
+Press Select on the gamepad while a game is running to return to the SD card ROM menu. Press START to toggle NTSC and PAL. The choice stays put when you return to the menu, so you can set PAL and then load a European ROM.
 
 ## Bugs
 

@@ -295,6 +295,10 @@ module sms
   // Player 1 stays on the pad. Select returns to the ROM menu.
   reg joypad2 = 1'b0;
 
+  // START toggles PAL (313 lines) and NTSC (262). Power-up is NTSC,
+  // which is what SW1 off used to select. The DIP switches are unused.
+  reg pal_mode = 1'b0;
+
   // ===============================================================
   // CPU
   // ===============================================================
@@ -361,6 +365,21 @@ module sms
       wait_sel_release <= 1'b0;
   end
   wire loader_reset = !pwr_up_reset_n | !btn[0] | menu_req;
+
+  // One toggle per press. Sampled on the CPU clock; the HID host
+  // registers START on the USB clock, so two flops close the crossing.
+  reg [1:0] sta_sync = 2'b0;
+  reg wait_sta_release = 1'b0;
+  always @(posedge cpuClock) begin
+    sta_sync <= {sta_sync[0], game_sta};
+    if (!pwr_up_reset_n)
+      wait_sta_release <= 1'b0;
+    else if (sta_sync[1] && !wait_sta_release) begin
+      pal_mode <= ~pal_mode;
+      wait_sta_release <= 1'b1;
+    end else if (!sta_sync[1])
+      wait_sta_release <= 1'b0;
+  end
   serial_loader
   serial_loader_inst
   (
@@ -715,10 +734,11 @@ module sms
     .lines224(r_vdp[0][1] & r_vdp[1][4]),
     .lines240(r_vdp[0][1] & r_vdp[1][3]),
     .mask_col0(r_vdp[0][5]),
-    // SW1 (on): PAL, 313 lines. European games such as The Addams Family
-    // stream the player sprites and the top HUD during blanking and do not
-    // finish in an NTSC frame, so the raster samples a half-written SAT.
-    .pal(sw[0]),
+    // pal_mode (START): PAL, 313 lines. European games such as The
+    // Addams Family stream the player sprites and the top HUD during
+    // blanking and do not finish in an NTSC frame, so the raster samples
+    // a half-written SAT.
+    .pal(pal_mode),
     .frame_height(frame_height),
     .v_counter(v_counter),
     .h_counter(h_counter),
@@ -902,7 +922,8 @@ module sms
   // ===============================================================
   // Leds
   // ===============================================================
-  assign led = {usb_type, joypad2, 1'b0, !n_hard_reset, mode};
+  // D4 (led[4]) is the video standard: on for PAL, off for NTSC.
+  assign led = {usb_type, joypad2, pal_mode, !n_hard_reset, mode};
 
   always @(posedge cpuClock) diag16 <= {r_vdp[0], r_vdp[1]};
 
