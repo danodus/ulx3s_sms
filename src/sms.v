@@ -30,6 +30,13 @@ module sms
   inout	        usb_fpga_bd_dp,
   output        usb_fpga_pu_dp,
   output        usb_fpga_pu_dn,
+`ifdef ICEPI
+  // Second USB host socket (IcePi Zero USB2). Controller 2.
+  inout         usb2_dn,
+  inout         usb2_dp,
+  output        usb2_pu_dp,
+  output        usb2_pu_dn,
+`endif
   // USB serial ROM loader. WiFi pins stay in the port list so the
   // board constraints still match; they are held idle.
   input         ftdi_txd,
@@ -287,6 +294,10 @@ module sms
   wire [1:0] usb_type;
   wire game_l, game_r, game_u, game_d, game_a, game_b, game_x, game_y;
   wire game_sel, game_sta;
+  // Controller 2 (IcePi USB2). Tied off when that port is not built.
+  wire [1:0] usb2_type;
+  wire game2_l, game2_r, game2_u, game2_d, game2_a, game2_b;
+  wire game2_sel, game2_sta;
 
   wire usb_reset = !pwr_up_reset_n | !btn[0];
 
@@ -309,7 +320,59 @@ module sms
 
   assign usb_gamepad_btn = {game_r, game_l, game_d, game_u, game_a, game_b, 1'b0};
 
-  // Player 1 stays on the pad. Select returns to the ROM menu.
+  // Same 12 MHz clock and reset as controller 1. IcePi only: ULX3S
+  // has no second host socket, and sms is that board's top module.
+`ifdef ICEPI
+  // Host mode: 15 kOhm pulldowns on, 1.5 kOhm device pull-ups off.
+  assign usb2_pu_dp = 1'b0;
+  assign usb2_pu_dn = 1'b0;
+`ifdef SYNTHESIS
+  usb_hid_host usb2 (
+    .usbclk(clk_usb),
+    .usbrst_n(!usb_reset),
+    .usb_dm(usb2_dn),
+    .usb_dp(usb2_dp),
+    .typ(usb2_type),
+    .report(),
+    .key_modifiers(), .key1(), .key2(), .key3(), .key4(),
+    .mouse_btn(), .mouse_dx(), .mouse_dy(),
+    .game_l(game2_l), .game_r(game2_r), .game_u(game2_u), .game_d(game2_d),
+    .game_a(game2_a), .game_b(game2_b), .game_x(), .game_y(),
+    .game_sel(game2_sel), .game_sta(game2_sta),
+    .conerr(), .dbg_hid_report()
+  );
+`else
+  assign usb2_type = 2'b00;
+  assign game2_l = 1'b0;
+  assign game2_r = 1'b0;
+  assign game2_u = 1'b0;
+  assign game2_d = 1'b0;
+  assign game2_a = 1'b0;
+  assign game2_b = 1'b0;
+  assign game2_sel = 1'b0;
+  assign game2_sta = 1'b0;
+`endif
+`else
+  assign usb2_type = 2'b00;
+  assign game2_l = 1'b0;
+  assign game2_r = 1'b0;
+  assign game2_u = 1'b0;
+  assign game2_d = 1'b0;
+  assign game2_a = 1'b0;
+  assign game2_b = 1'b0;
+  assign game2_sel = 1'b0;
+  assign game2_sta = 1'b0;
+`endif
+
+  // Select returns to the ROM menu. Start toggles PAL/NTSC.
+  // Either pad can do both. Player 1 directions stay on port $DC.
+  wire any_sel = game_sel | game2_sel;
+  wire any_sta = game_sta | game2_sta;
+  // Same packing as player 1, sampled on the CPU clock: [5] right,
+  // [4] left, [3] down, [2] up, [1] A, [0] B.
+  reg [5:0] p2_joy = 6'b0;
+  always @(posedge cpuClock)
+    p2_joy <= {game2_r, game2_l, game2_d, game2_u, game2_a, game2_b};
   reg joypad2 = 1'b0;
 
   // START toggles PAL (313 lines) and NTSC (262). Power-up is NTSC,
@@ -378,10 +441,10 @@ module sms
     menu_req <= 1'b0;
     if (!pwr_up_reset_n)
       wait_sel_release <= 1'b0;
-    else if (game_sel && !wait_sel_release && load_done) begin
+    else if (any_sel && !wait_sel_release && load_done) begin
       menu_req <= 1'b1;
       wait_sel_release <= 1'b1;
-    end else if (!game_sel)
+    end else if (!any_sel)
       wait_sel_release <= 1'b0;
   end
   wire loader_reset = !pwr_up_reset_n | !btn[0] | menu_req;
@@ -391,7 +454,7 @@ module sms
   reg [1:0] sta_sync = 2'b0;
   reg wait_sta_release = 1'b0;
   always @(posedge cpuClock) begin
-    sta_sync <= {sta_sync[0], game_sta};
+    sta_sync <= {sta_sync[0], any_sta};
     if (!pwr_up_reset_n)
       wait_sta_release <= 1'b0;
     else if (sta_sync[1] && !wait_sta_release) begin
@@ -425,10 +488,12 @@ module sms
     .reset(loader_reset),
     .cancel(serial_busy),
     .active(loader_menu),
-    .pad_btn(R_btn_joy),
-    .pad_u(game_u),
-    .pad_d(game_d),
-    .pad_a(game_a),
+    // Controller 2 uses the same Up/Down/A/B bits, so either pad
+    // can move the highlight and open a folder or start a ROM.
+    .pad_btn(R_btn_joy | {p2_joy, 1'b0}),
+    .pad_u(game_u | p2_joy[2]),
+    .pad_d(game_d | p2_joy[3]),
+    .pad_a(game_a | p2_joy[1]),
     .sd_mosi(l_sd_mosi),
     .sd_miso(sd_d[0]),
     .sd_clk(l_sd_clk),
@@ -839,8 +904,11 @@ module sms
   reg  r_status_read;
   reg  status_read;
   wire [7:0] status = {r_interrupt_flag, too_many_sprites, r_sprite_collision, (too_many_sprites ? spritex : 5'b11111)};
-  wire [7:0] joy_data0 = joypad2 ? {R_btn_joy[4:3], 6'b111111} : {2'b11, ~R_btn_joy[2:1], ~R_btn_joy[6:3]};
-  wire [7:0] joy_data1 = joypad2 ? {4'b0101, R_btn_joy[2:1], R_btn_joy[6:5]} : {8'b10111111};
+  // Active low. B is button 1, A is button 2, same as player 1.
+  // $DC[7:6] is P2 Down/Up. $DD[3:0] is P2 button 2, button 1, Right, Left.
+  // $DD[7:4] stays the TH/reset nibble.
+  wire [7:0] joy_data0 = joypad2 ? {R_btn_joy[4:3], 6'b111111} : {~p2_joy[3], ~p2_joy[2], ~R_btn_joy[2:1], ~R_btn_joy[6:3]};
+  wire [7:0] joy_data1 = joypad2 ? {4'b0101, R_btn_joy[2:1], R_btn_joy[6:5]} : {4'b1011, ~p2_joy[1], ~p2_joy[0], ~p2_joy[5], ~p2_joy[4]};
 
   assign cpuDataIn =  vdp_data_port && n_ioRD == 1'b0 ? vga_dout :
                       vdp_ctrl_port && n_ioRD == 1'b0 ? status :
@@ -945,7 +1013,8 @@ module sms
   // Leds
   // ===============================================================
   // D4 (led[4]) is the video standard: on for PAL, off for NTSC.
-  assign led = {usb_type, joypad2, pal_mode, !n_hard_reset, mode};
+  // led[5] is player 2 present (IcePi USB2). It stays off on ULX3S.
+  assign led = {usb_type, |usb2_type, pal_mode, !n_hard_reset, mode};
 
   always @(posedge cpuClock) diag16 <= {r_vdp[0], r_vdp[1]};
 

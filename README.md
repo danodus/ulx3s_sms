@@ -12,7 +12,7 @@ It currently uses the Europe/USA 1.3 BIOS, which, on power-up,  displays the Seg
 
 On power-up, and again after the power button is pressed, the Z80 stays in reset until a cartridge is loaded. You can load a game in either of these ways:
 
-**SD card (recommended):** Format a microSD card as **FAT32** and copy `.sms` ROM files to the card. Files can be in the root or in folders, and long filenames are shown. Insert the card, power on (or press the power button to return to the menu). Use **Up/Down** (board buttons or USB gamepad) to highlight an entry and **Fire1 / A** to open a folder or load a ROM. In a folder, **..** is the first entry and goes up one level. A file list is shown on HDMI while the menu is active. Names longer than 96 characters are cut off.
+**SD card (recommended):** Format a microSD card as **FAT32** and copy `.sms` ROM files to the card. Files can be in the root or in folders, and long filenames are shown. Insert the card, power on (or press the power button to return to the menu). Use **Up/Down** (board buttons or either USB gamepad) to highlight an entry and **Fire1 / A** to open a folder or load a ROM. B does the same. In a folder, **..** is the first entry and goes up one level. A file list is shown on HDMI while the menu is active. Names longer than 96 characters are cut off.
 
 **USB serial:** Transfer a ROM with:
 
@@ -58,7 +58,7 @@ Press START on the USB gamepad to toggle the video standard. Power-up is NTSC (2
 
 ## IcePi Zero
 
-Rev 1.2 (50 MHz oscillator on M1, ECP5-25F, CABGA256). Picture and PSG audio both come from the Mini-GPDI HDMI port. Plug the gamepad into the first USB host socket (USB1), not the Flash/UART port. Button 0 returns to the SD card menu. LED0 lights when a USB device is present, LED1 and LED2 show the device type, LED3 is on for PAL, and LED4 is on while the Z80 is held in reset.
+Rev 1.2 (50 MHz oscillator on M1, ECP5-25F, CABGA256). Picture and PSG audio both come from the Mini-GPDI HDMI port. Plug controller 1 into the first USB host socket (USB1) and controller 2 into the second (USB2), not the Flash/UART port. Button 0 returns to the SD card menu. Select on either gamepad, while a game is running, does the same. Start on either gamepad toggles PAL and NTSC. Up and Down on either gamepad move through the file list, and A or B opens a folder or starts the highlighted ROM. LED0 lights when a USB device is present on either port, LED1 and LED2 show the USB1 device type, LED3 is on for PAL, and LED4 is on while the Z80 is held in reset.
 
 ```
 source ~/oss-cad-suite/environment
@@ -72,7 +72,7 @@ make prog
 
 A USB gamepad can be connected to US2 using a USB-OTG adapter.  When detected, both D6 and D7 LEDs will be ON.  With my Kiwitata SNES controller, the detection is not reliable.  This is a known issue with the USB HID host I'm using (https://github.com/nand2mario/usb_hid_host/issues/5).
 
-Press Select on the gamepad while a game is running to return to the SD card ROM menu. Press START to toggle NTSC and PAL. The choice stays put when you return to the menu, so you can set PAL and then load a European ROM.
+Press Select on the gamepad while a game is running to return to the SD card ROM menu. Press START to toggle NTSC and PAL. On IcePi Zero, Select and Start on controller 2 do the same. The choice stays put when you return to the menu, so you can set PAL and then load a European ROM.
 
 ## Bugs
 

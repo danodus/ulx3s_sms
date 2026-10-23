@@ -11,11 +11,17 @@ module icepi_zero_top
   output [3:0]  gpdi_dp,
   output [3:0]  gpdi_dn,
 
-  // First USB host socket (USB1). Not the Flash/UART jack.
+  // First USB host socket (USB1). Controller 1. Not the Flash/UART jack.
   inout         usb_dn,
   inout         usb_dp,
   output        usb_pull_dp,
   output        usb_pull_dn,
+
+  // Second USB host socket (USB2). Controller 2.
+  inout         usb2_dn,
+  inout         usb2_dp,
+  output        usb2_pull_dp,
+  output        usb2_pull_dn,
 
   // On-board USB-UART. FPGA TX is uart_tx.
   input         uart_rx,
@@ -45,8 +51,8 @@ module icepi_zero_top
   // sms does not drive CKE. Hold the chip enabled.
   assign sdram_cke = 1'b1;
 
-  // led[0] device present, [2:1] usb typ, [3] PAL, [4] held in reset.
-  assign led = {sms_led[3], sms_led[4], sms_led[7], sms_led[6], |sms_led[7:6]};
+  // led[0] device present on either port, [2:1] USB1 typ, [3] PAL, [4] held in reset.
+  assign led = {sms_led[3], sms_led[4], sms_led[7], sms_led[6], |sms_led[7:6] | sms_led[5]};
 
   sms #(
     .c_clk_in_hz(50_000_000),
@@ -63,6 +69,10 @@ module icepi_zero_top
     .usb_fpga_bd_dp(usb_dp),
     .usb_fpga_pu_dp(usb_pull_dp),
     .usb_fpga_pu_dn(usb_pull_dn),
+    .usb2_dn(usb2_dn),
+    .usb2_dp(usb2_dp),
+    .usb2_pu_dp(usb2_pull_dp),
+    .usb2_pu_dn(usb2_pull_dn),
     .ftdi_txd(uart_rx),
     .ftdi_rxd(uart_tx),
     .wifi_txd(1'b1),

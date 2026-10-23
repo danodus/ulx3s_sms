@@ -62,7 +62,7 @@ $(BUILDDIR)/font8x8.hex: $(FONT_HEX)
 
 $(BUILDDIR)/toplevel.json: $(VERILOG) $(BUILDDIR)/firmware.hex $(BUILDDIR)/font8x8.hex
 	mkdir -p $(BUILDDIR)
-	yosys -p "synth_ecp5 -top icepi_zero_top -json $@" $(VERILOG)
+	yosys -p "verilog_defaults -add -DICEPI; read_verilog -sv $(filter %.sv,$(VERILOG)); read_verilog $(filter %.v,$(VERILOG)); synth_ecp5 -top icepi_zero_top -json $@"
 
 $(BUILDDIR)/toplevel.config: $(PIN_DEF) $(BUILDDIR)/toplevel.json
 	nextpnr-ecp5 --$(DEVICE) --package $(PACKAGE) --speed 6 --timing-allow-fail --freq 25 --textcfg $@ --json $(filter-out $<,$^) --lpf $<
