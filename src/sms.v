@@ -40,6 +40,7 @@ module sms
   input         wifi_gpio16,
   input         wifi_gpio5,
   output        wifi_gpio0,
+  output        wifi_en,
 
   inout  sd_clk, sd_cmd,
   inout   [3:0] sd_d,
@@ -94,12 +95,10 @@ module sms
   assign usb_fpga_pu_dp = 1'b0;
   assign usb_fpga_pu_dn = 1'b0;
   
-  // ESP32 and SD pins held idle so the FPGA does not drive those buses
   assign wifi_rxd = 1'b1;
   assign wifi_gpio0 = 1'b1;
-  assign sd_clk = 1'bz;
-  assign sd_cmd = 1'bz;
-  assign sd_d = 4'bzzzz;
+  /* ESP32 shares the SD pins. Hold it in reset so the card can be read. */
+  assign wifi_en = 1'b0;
 
   // VGA (should be assigned to some gp/gn outputs
   wire   [7:0]  red;
@@ -107,6 +106,8 @@ module sms
   wire   [7:0]  blue;
   wire          hSync;
   wire          vSync;
+  wire [9:0]    raster_hc;
+  wire [9:0]    raster_vc;
   
   generate
     genvar i;
@@ -270,26 +271,8 @@ module sms
 
   assign usb_gamepad_btn = {game_r, game_l, game_d, game_u, game_a, game_b, 1'b0};
 
-  // ===============================================================
-  // Joypad 2 Selection
-  // ===============================================================
-
-  reg joypad2, wait_sel_release;
-  
-  always @(posedge cpuClock) begin
-    if (!pwr_up_reset_n) begin
-      joypad2 <= 1'b0;
-      wait_sel_release <= 1'b0;
-    end else begin
-      if (game_sel && !wait_sel_release) begin
-        joypad2 <= ~joypad2;
-        wait_sel_release <= 1'b1;
-      end else begin
-        if (!game_sel)
-          wait_sel_release <= 1'b0;
-      end
-    end
-  end
+  // Player 1 stays on the pad. Select returns to the ROM menu.
+  reg joypad2 = 1'b0;
 
   // ===============================================================
   // CPU
@@ -302,6 +285,23 @@ module sms
   wire [7:0] loader_data;
 `ifdef SYNTHESIS
   wire [31:0] rom_len;
+  wire       serial_load_done;
+  wire       serial_codemasters;
+  wire [31:0] serial_rom_len;
+  wire       serial_we;
+  wire [23:0] serial_addr;
+  wire [7:0] serial_data;
+  wire       card_we;
+  wire [23:0] card_addr;
+  wire [7:0] card_data;
+  wire       card_load_done;
+  wire       card_codemasters;
+  wire [31:0] card_rom_len;
+  wire       loader_menu = !load_done;
+  wire       l_sd_mosi, l_sd_clk, l_sd_cs_n;
+  wire [7:0] ov_r, ov_g, ov_b;
+  wire       ov_active;
+  wire [7:0] hdmi_r, hdmi_g, hdmi_b;
 `else
   reg [31:0] rom_len = 0;
 `endif
@@ -324,9 +324,21 @@ module sms
   endfunction
 
 `ifdef SYNTHESIS
-  // Power-up and the power button both return to the load phase.
-  // The Z80 stays reset until the serial transfer checks out.
-  wire loader_reset = !pwr_up_reset_n | !btn[0];
+  // Power-up, the power button, and Select (while a game is running)
+  // return to the ROM menu. The Z80 stays reset until a ROM is loaded.
+  reg menu_req = 1'b0;
+  reg wait_sel_release = 1'b0;
+  always @(posedge cpuClock) begin
+    menu_req <= 1'b0;
+    if (!pwr_up_reset_n)
+      wait_sel_release <= 1'b0;
+    else if (game_sel && !wait_sel_release && load_done) begin
+      menu_req <= 1'b1;
+      wait_sel_release <= 1'b1;
+    end else if (!game_sel)
+      wait_sel_release <= 1'b0;
+  end
+  wire loader_reset = !pwr_up_reset_n | !btn[0] | menu_req;
   serial_loader
   serial_loader_inst
   (
@@ -335,15 +347,64 @@ module sms
     .reset(loader_reset),
     .rxd(ftdi_txd),
     .txd(ftdi_rxd),
-    .load_done(load_done),
-    .codemasters(codemasters),
-    .weB(loader_we),
-    .addrB(loader_addr),
-    .dinB(loader_data),
-    .rom_len(rom_len)
+    .load_done(serial_load_done),
+    .codemasters(serial_codemasters),
+    .weB(serial_we),
+    .addrB(serial_addr),
+    .dinB(serial_data),
+    .rom_len(serial_rom_len)
   );
+
+  loader_soc loader_soc_i(
+    .clk(cpuClock),
+    .raster_hc(raster_hc),
+    .raster_vc(raster_vc),
+    .cpuClockEnable(cpuClockEnable),
+    .reset(loader_reset),
+    .active(loader_menu),
+    .pad_btn(R_btn_joy),
+    .pad_u(game_u),
+    .pad_d(game_d),
+    .pad_a(game_a),
+    .sd_mosi(l_sd_mosi),
+    .sd_miso(sd_d[0]),
+    .sd_clk(l_sd_clk),
+    .sd_cs_n(l_sd_cs_n),
+    .ov_r(ov_r),
+    .ov_g(ov_g),
+    .ov_b(ov_b),
+    .ov_active(ov_active),
+    .card_weB(card_we),
+    .card_addrB(card_addr),
+    .card_dinB(card_data),
+    .card_load_done(card_load_done),
+    .card_codemasters(card_codemasters),
+    .card_rom_len(card_rom_len)
+  );
+
+  assign load_done = serial_load_done | card_load_done;
+  assign codemasters = card_load_done ? card_codemasters : serial_codemasters;
+  assign rom_len     = card_load_done ? card_rom_len : serial_rom_len;
+  assign loader_we   = serial_we | card_we;
+  assign loader_addr = serial_we ? serial_addr : card_addr;
+  assign loader_data = serial_we ? serial_data : card_data;
+
+  assign sd_cmd  = loader_menu ? l_sd_mosi  : 1'bz;
+  assign sd_clk  = loader_menu ? l_sd_clk   : 1'bz;
+  assign sd_d[3] = loader_menu ? l_sd_cs_n  : 1'bz;
+  /* DAT1/DAT2 stay high in SPI mode. Do not assign sd_d[0]:
+     a 1'bz driver makes Yosys drop the MISO input. */
+  assign sd_d[2] = loader_menu ? 1'b1 : 1'bz;
+  assign sd_d[1] = loader_menu ? 1'b1 : 1'bz;
+
+  assign hdmi_r = loader_menu ? ov_r : red;
+  assign hdmi_g = loader_menu ? ov_g : green;
+  assign hdmi_b = loader_menu ? ov_b : blue;
 `else
   assign load_done = 1'b1;
+  assign hdmi_r = red;
+  assign hdmi_g = green;
+  assign hdmi_b = blue;
 `endif
 
   reg n_hard_reset;
@@ -596,6 +657,8 @@ module sms
     .vga_de(vga_de),
     .vga_hs(hSync),
     .vga_vs(vSync),
+    .raster_hc(raster_hc),
+    .raster_vc(raster_vc),
     .vga_addr(vga_addr),
     .vga_din(cpuDataOut),
     .vga_dout(vga_dout),
@@ -645,9 +708,9 @@ module sms
   HDMI_out vga2dvid (
     .pixclk(clk_vga),
     .pixclk_x5(clk_hdmi),
-    .red  (red),
-    .green(green),
-    .blue (blue),
+    .red  (hdmi_r),
+    .green(hdmi_g),
+    .blue (hdmi_b),
     .vde  (vga_de),
     .hSync(hSync),
     .vSync(vSync),

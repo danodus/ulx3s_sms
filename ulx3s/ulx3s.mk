@@ -9,9 +9,9 @@ compile: $(BUILDDIR)/toplevel.bit
 prog: $(BUILDDIR)/toplevel.bit
 	fujprog $^
 
-$(BUILDDIR)/toplevel.json: $(VERILOG)
+$(BUILDDIR)/toplevel.json: $(VERILOG) $(BUILDDIR)/firmware.hex $(BUILDDIR)/font8x8.hex
 	mkdir -p $(BUILDDIR)
-	yosys -p "synth_ecp5 -top sms -json $@" $^
+	yosys -p "synth_ecp5 -top sms -json $@" $(VERILOG)
 
 $(BUILDDIR)/%.config: $(PIN_DEF) $(BUILDDIR)/toplevel.json
 	nextpnr-ecp5 --${DEVICE} --package CABGA381 --timing-allow-fail --freq 25 --textcfg  $@ --json $(filter-out $<,$^) --lpf $<

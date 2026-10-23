@@ -10,13 +10,19 @@ Joypad 1 is implemented by using the buttons.
 
 It currently uses the Europe/USA 1.3 BIOS, which, on power-up,  displays the Sega trademark and then looks for a game cartridge.
 
-On power-up, and again after the power button is pressed, the FPGA waits for a cartridge on the USB serial port and holds the Z80 in reset. Transfer a ROM with:
+On power-up, and again after the power button is pressed, the Z80 stays in reset until a cartridge is loaded. You can load a game in either of these ways:
+
+**SD card (recommended):** Format a microSD card as **FAT32** and copy `.sms` ROM files to the card. Files can be in the root or in folders, and long filenames are shown. Insert the card, power on (or press the power button to return to the menu). Use **Up/Down** (board buttons or USB gamepad) to highlight an entry and **Fire1 / A** to open a folder or load a ROM. In a folder, **..** is the first entry and goes up one level. A file list is shown on HDMI while the menu is active.
+
+**USB serial:** Transfer a ROM with:
 
 ```
 python3 tools/load_rom.py /dev/cu.usbserial-XXXX roms/game.sms
 ```
 
-The script needs pyserial (`python3 -m pip install pyserial`). It waits for the loader, sends the ROM at 921600 baud, and the game starts once the transfer checks out. Press the power button to load a different ROM.
+The script needs pyserial (`python3 -m pip install pyserial`). It waits for the loader, sends the ROM at 921600 baud, and the game starts once the transfer checks out. Serial loading still works while the SD menu is shown. Press the power button to load a different ROM.
+
+The SD menu firmware is built with a RISC-V GCC toolchain (`firmware/sdmenu/`). Set `RV_PREFIX` in `firmware/sdmenu/Makefile` if your `riscv-none-elf-gcc` is not in the default path.
 
 There are lots of games on the [planetemu](https://www.planetemu.net/roms/sega-master-system) site.
 
@@ -34,12 +40,15 @@ Console memory (8KB) uses BRAM, as does the video ram (16KB), and the bios rom (
 
 You need recent versions of Yosys, nextpnr-ecp5, project trellis and fujprog.
 
-To build do:
+To build do (source the OSS CAD Suite first if yosys/nextpnr are not on your PATH):
 
 ```
+source ~/oss-cad-suite/environment
 cd ulx3s
 make prog
 ```
+
+This builds the RV32 SD menu firmware, then synthesizes the bitstream.
 
 It currently defaults to an 85F board. To use a 12F add `DEVICE = 12k` to the Makefile.
 
@@ -49,7 +58,7 @@ You can select the PAL mode with SW1. OFF=NTSC (262 lines), ON=PAL (313 lines). 
 
 A USB gamepad can be connected to US2 using a USB-OTG adapter.  When detected, both D6 and D7 LEDs will be ON.  With my Kiwitata SNES controller, the detection is not reliable.  This is a known issue with the USB HID host I'm using (https://github.com/nand2mario/usb_hid_host/issues/5).
 
-To switch between Joystick 1 and 2, press the Select button.  The LED D5 will be ON when josytick #2 is selected.
+Press Select on the gamepad while a game is running to return to the SD card ROM menu.
 
 ## Bugs
 

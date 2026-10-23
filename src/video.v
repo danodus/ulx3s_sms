@@ -14,6 +14,8 @@ module video (
   output        vga_hs,
   output        vga_vs,
   output        vga_de,
+  output [9:0]  raster_hc,
+  output [9:0]  raster_vc,
   input  [7:0]  vga_din,
   output [7:0]  vga_dout,
   input [13:0]  vga_addr,
@@ -265,6 +267,8 @@ module video (
   assign vga_hs = !(hc >= HA + HFP && hc < HA + HFP + HS);
   assign vga_vs = !(vc >= VA + VFP && vc < VA + VFP + VS);
   assign vga_de = !(hc >= HA || vc >= VA);
+  assign raster_hc = hc;
+  assign raster_vc = vc;
 
   // Set x and y to screen pixel coordinates. x not valid in text mode
   wire [7:0] x = hc[9:1] - HB2;
