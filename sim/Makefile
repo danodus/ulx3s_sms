@@ -1,4 +1,4 @@
-CART ?= ../roms/hello_world.sms
+CART ?= ../roms/hello_world/hello_world.sms
 
 VERILATOR = verilator
 
