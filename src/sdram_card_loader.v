@@ -4,6 +4,9 @@ module sdram_card_loader
   input  wire        clk,
   input  wire        cpuClockEnable,
   input  wire        reset,
+  // A USB upload owns the cartridge. Drop the SD load so the
+  // machine reboots into the uploaded ROM.
+  input  wire        cancel,
 
   input  wire        byte_wstrb,
   input  wire [7:0]  byte_data,
@@ -36,7 +39,7 @@ module sdram_card_loader
   always @(posedge clk) begin
     old_ce <= cpuClockEnable;
 
-    if (reset) begin
+    if (reset || cancel) begin
       loader_write <= 2'd0;
       loader_cnt   <= 1'b0;
       write_addr   <= 24'd0;

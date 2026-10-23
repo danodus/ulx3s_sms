@@ -12,7 +12,7 @@ It currently uses the Europe/USA 1.3 BIOS, which, on power-up,  displays the Seg
 
 On power-up, and again after the power button is pressed, the Z80 stays in reset until a cartridge is loaded. You can load a game in either of these ways:
 
-**SD card (recommended):** Format a microSD card as **FAT32** and copy `.sms` ROM files to the card. Files can be in the root or in folders, and long filenames are shown. Insert the card, power on (or press the power button to return to the menu). Use **Up/Down** (board buttons or USB gamepad) to highlight an entry and **Fire1 / A** to open a folder or load a ROM. In a folder, **..** is the first entry and goes up one level. A file list is shown on HDMI while the menu is active.
+**SD card (recommended):** Format a microSD card as **FAT32** and copy `.sms` ROM files to the card. Files can be in the root or in folders, and long filenames are shown. Insert the card, power on (or press the power button to return to the menu). Use **Up/Down** (board buttons or USB gamepad) to highlight an entry and **Fire1 / A** to open a folder or load a ROM. In a folder, **..** is the first entry and goes up one level. A file list is shown on HDMI while the menu is active. Names longer than 96 characters are cut off.
 
 **USB serial:** Transfer a ROM with:
 
@@ -55,6 +55,18 @@ This builds the RV32 SD menu firmware, then synthesizes the bitstream.
 It currently defaults to an 85F board. To use a 12F add `DEVICE = 12k` to the Makefile.
 
 Press START on the USB gamepad to toggle the video standard. Power-up is NTSC (262 lines). Each press switches to PAL (313 lines) and back. D4 lights while PAL is selected. Unlike the real hardware, the CPU clock speed is the same for both.
+
+## IcePi Zero
+
+Rev 1.2 (50 MHz oscillator on M1, ECP5-25F, CABGA256). Picture and PSG audio both come from the Mini-GPDI HDMI port. Plug the gamepad into the first USB host socket (USB1), not the Flash/UART port. Button 0 returns to the SD card menu. LED0 lights when a USB device is present, LED1 and LED2 show the device type, LED3 is on for PAL, and LED4 is on while the Z80 is held in reset.
+
+```
+source ~/oss-cad-suite/environment
+cd icepi_zero
+make prog
+```
+
+`make flash` writes the bitstream to SPI flash. Programming uses openFPGALoader on the on-board FT231X (`-c ft231X --pins=7:3:5:6`). Serial ROM loading is the same `tools/load_rom.py` command, at 921600 baud, on the Flash/UART port. `DEVICE` defaults to `25k`.
 
 ## USB Gamepad
 

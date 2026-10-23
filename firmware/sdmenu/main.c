@@ -39,18 +39,19 @@ static int ends_with_sms(const char *name)
           (ext[3] == 's' || ext[3] == 'S'));
 }
 
-static int mapper_codemasters(const uint8_t *data, uint32_t len)
+/* sig is the 18 bytes at file offset 0x7FE6 (checksum through "TMR SEGA"). */
+static int mapper_codemasters(const uint8_t *sig, uint32_t len)
 {
   if (len <= 0x7fff)
     return 0;
-  uint16_t word = (uint16_t)data[0x7fe6] | ((uint16_t)data[0x7fe7] << 8);
-  uint16_t comp = (uint16_t)data[0x7fe8] | ((uint16_t)data[0x7fe9] << 8);
+  uint16_t word = (uint16_t)sig[0] | ((uint16_t)sig[1] << 8);
+  uint16_t comp = (uint16_t)sig[2] | ((uint16_t)sig[3] << 8);
   if (word == 0 || ((word + comp) & 0xffff) != 0)
     return 0;
   for (int i = 0; i < 6; i++)
-    if (data[0x7fea + i] != 0)
+    if (sig[4 + i] != 0)
       return 0;
-  if (memcmp(data + 0x7ff0, "TMR SEGA", 8) != 0)
+  if (memcmp(sig + 10, "TMR SEGA", 8) != 0)
     return 0;
   return 1;
 }
@@ -303,7 +304,7 @@ static int load_rom(const char *path)
   sdram_set_length(len);
 
   uint8_t sector[512];
-  uint8_t header[0x8000];
+  uint8_t sig[18] = {0};
   uint32_t got = 0;
   int mapper = 0;
 
@@ -316,14 +317,15 @@ static int load_rom(const char *path)
       return -1;
     }
     for (uint32_t i = 0; i < chunk; i++) {
-      if (got + i < sizeof(header))
-        header[got + i] = sector[i];
+      uint32_t off = got + i;
+      if (off >= 0x7fe6 && off < 0x7fe6 + sizeof(sig))
+        sig[off - 0x7fe6] = sector[i];
       sdram_write_byte(sector[i]);
     }
     got += chunk;
   }
   fl_fclose(fh);
-  mapper = mapper_codemasters(header, len);
+  mapper = mapper_codemasters(sig, len);
   sdram_set_mapper(mapper);
   sdram_finalize();
   return 0;

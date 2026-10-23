@@ -24,10 +24,9 @@
 #define IO_IN(port)       (*(volatile uint32_t *)(IO_BASE + (port)))
 #define IO_OUT(port, val) (*(volatile uint32_t *)(IO_BASE + (port)) = (val))
 
-/* Menu text buffer in CPU RAM; HDMI overlay reads the same words. */
-#define MENU_FB_BASE 0x00020000u
-#define MENU_FB      ((volatile char *)MENU_FB_BASE)
-
+/* The overlay reads menu_vram, filled by this IO write. A shadow
+   copy at 0x20000 used to sit in the 256 KiB RAM; that address
+   aliases to word 0 of the 32 KiB RAM and overwrites the firmware. */
 #define OVERLAY_CHAR_BIT 25u
 #define OVERLAY_SEL_BIT  24u
 
@@ -41,7 +40,6 @@
 static inline void overlay_put(uint8_t row, uint8_t col, char c)
 {
   uint32_t idx = (uint32_t)row * 40u + (uint32_t)col;
-  MENU_FB[idx] = c;
   IO_OUT(IO_OVERLAY, (1u << OVERLAY_CHAR_BIT) | (idx << 8) | (uint8_t)c);
 }
 

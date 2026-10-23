@@ -6,6 +6,7 @@ module loader_soc
   input  wire [9:0]  raster_vc,
   input  wire        cpuClockEnable,
   input  wire        reset,
+  input  wire        cancel,
   input  wire        active,
 
   input  wire [6:0]  pad_btn,
@@ -31,7 +32,13 @@ module loader_soc
   output wire [31:0] card_rom_len
 );
 
-  localparam NRV_RAM = 262144;
+  // 32 KiB is shared by ULX3S and IcePi Zero. A 48 KiB array is
+  // addressed with 14 bits, so Yosys maps it as 64 KiB and the
+  // ECP5-25 runs out of block RAM. The menu image ends near 23 KiB,
+  // which leaves about 10 KiB of stack.
+  localparam NRV_RAM = 32 * 1024;
+  localparam RAM_WORDS = NRV_RAM / 4;
+  localparam RAM_AW = $clog2(RAM_WORDS);
 
   `include "loader_io_bits.v"
 
@@ -55,18 +62,19 @@ module loader_soc
   assign mem_rbusy = 1'b0;
   assign mem_wbusy = 1'b0;
 
-  wire [19:0] ram_word_address = mem_address[21:2];
+  wire [RAM_AW-1:0] ram_word_address = mem_address[RAM_AW+1:2];
 
+  // One write port so this stays a memory. Several ports become
+  // flip-flops and Yosys spends a long time on the address decode.
+  (* ram_style = "block" *)
   (* no_rw_check *)
-  reg [31:0] RAM[0:(NRV_RAM/4)-1];
+  reg [31:0] RAM[0:RAM_WORDS-1];
   reg [31:0] ram_rdata;
 
   initial begin
     $readmemh("../firmware/sdmenu/firmware.hex", RAM);
   end
 
-  /* One write port so this stays LUT RAM. Several ports become flip-flops
-     and Yosys/ABC spend many minutes on the address decode. */
   reg [7:0] menu_vram [0:1023];
   wire menu_io_we = active && io_wstrb && io_word_address[IO_OVERLAY_bit] &&
                     io_wdata[25] && !io_wdata[24];
@@ -146,6 +154,7 @@ module loader_soc
     .clk(clk),
     .cpuClockEnable(cpuClockEnable),
     .reset(reset),
+    .cancel(cancel),
     .byte_wstrb(byte_wstrb),
     .byte_data(byte_data),
     .set_mapper(set_mapper),
@@ -173,10 +182,15 @@ module loader_soc
         byte_data  <= io_wdata[7:0];
         byte_wstrb <= 1'b1;
       end else if (io_word_address[IO_SDRAM_CTL_bit]) begin
-        set_mapper <= 1'b1;
-        mapper_cm  <= io_wdata[0];
+        // Bit 0 selects the mapper. Bit 1 releases the Z80. The
+        // finish write is value 2, so it must not load bit 0 or a
+        // Codemasters cart comes out of reset as a Sega cart.
         if (io_wdata[1])
           finalize <= 1'b1;
+        else begin
+          set_mapper <= 1'b1;
+          mapper_cm  <= io_wdata[0];
+        end
       end else if (io_word_address[IO_SDRAM_LEN_bit])
         rom_length <= io_wdata;
     end

@@ -18,9 +18,11 @@ SRCS = crt0.S main.c microwait.c spi_sd.c $(FAT_SRCS)
 OBJS = $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)
 
+HDRS = io.h fat_custom.h
+
 all: firmware.hex
 
-firmware.elf: $(OBJS)
+firmware.elf: $(OBJS) ram.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS) -lgcc
 
 # $readmemh into the 32-bit CPU RAM takes one word per line.
@@ -34,7 +36,7 @@ open("firmware.hex","w").write("".join("%08x\n" % ( \
   ((d[i+3] if i+3 < len(d) else 0) << 24)) \
   for i in range(0, len(d), 4)))'
 
-%.o: %.c
+%.o: %.c $(HDRS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 %.o: %.S

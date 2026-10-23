@@ -16,6 +16,7 @@ module serial_loader
   input  wire        rxd,
   output wire        txd,
   output reg         load_done,
+  output wire        busy,
   output reg         codemasters,
   output wire        weB,
   output wire [23:0] addrB,
@@ -150,6 +151,9 @@ module serial_loader
   assign dinB  = loader_data;
 
   reg [2:0]  state = S_WAIT;
+  // High for the whole frame, including the reply. The Z80 stays
+  // reset until this falls so a finished upload boots the new ROM.
+  assign busy = (state != S_WAIT);
   reg        hold_valid = 1'b0;
   reg [7:0]  hold_data = 8'd0;
   reg [1:0]  len_idx = 2'd0;

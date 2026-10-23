@@ -3,7 +3,10 @@ module sms
 #(
   parameter c_vga_out     = 0, // 0; Just HDMI, 1: VGA and HDMI
   parameter c_lcd_hex     = 0, // SPI LCD HEX decoder
-  parameter c_diag        = 1  // 0: No led diagnostcs, 1: led diagnostics
+  parameter c_diag        = 1, // 0: No led diagnostcs, 1: led diagnostics
+  // Board oscillator. ULX3S is 25 MHz. IcePi Zero is 50 MHz; the
+  // pixel, CPU, and PSG clocks stay 25 MHz either way.
+  parameter c_clk_in_hz   = 25_000_000
 )
 (
   input         clk_25mhz,
@@ -189,7 +192,7 @@ module sms
   wire [3:0] clocks;
   ecp5pll
   #(
-      .in_hz( 25*1000000),
+      .in_hz(c_clk_in_hz),
     .out0_hz(125*1000000),
     .out1_hz( 25*1000000),
     .out2_hz(100*1000000),                // SDRAM core
@@ -228,13 +231,27 @@ module sms
 `ifdef SYNTHESIS
   wire clk_usb_locked;
   wire clk_usb;
-  usb_pll ecp5pll_usb_inst
-  (
-    .clkin(clk_25mhz),
-    .clk12(clk_usb),
-    .clk100(),
-    .locked(clk_usb_locked)
-  );
+  // usb_pll is two PLLs and only accepts 25 MHz. An ECP5-25 has two
+  // PLLs total, so a 50 MHz board uses the single 100-to-12 stage.
+  generate
+    if (c_clk_in_hz == 25_000_000) begin : usb_clk_25
+      usb_pll ecp5pll_usb_inst
+      (
+        .clkin(clk_25mhz),
+        .clk12(clk_usb),
+        .clk100(),
+        .locked(clk_usb_locked)
+      );
+    end else begin : usb_clk_50
+      usb_pll_12 ecp5pll_usb_inst
+      (
+        .clkin(clk_sdram),
+        .rst(~clk_sdram_locked),
+        .clk12(clk_usb),
+        .locked(clk_usb_locked)
+      );
+    end
+  endgenerate
 `endif
  
   // ===============================================================
@@ -311,6 +328,7 @@ module sms
 `ifdef SYNTHESIS
   wire [31:0] rom_len;
   wire       serial_load_done;
+  wire       serial_busy;
   wire       serial_codemasters;
   wire [31:0] serial_rom_len;
   wire       serial_we;
@@ -352,6 +370,8 @@ module sms
 `ifdef SYNTHESIS
   // Power-up, the power button, and Select (while a game is running)
   // return to the ROM menu. The Z80 stays reset until a ROM is loaded.
+  // A USB upload also holds it in reset, then boots that ROM, including
+  // when the previous ROM came from the SD menu.
   reg menu_req = 1'b0;
   reg wait_sel_release = 1'b0;
   always @(posedge cpuClock) begin
@@ -389,6 +409,7 @@ module sms
     .rxd(ftdi_txd),
     .txd(ftdi_rxd),
     .load_done(serial_load_done),
+    .busy(serial_busy),
     .codemasters(serial_codemasters),
     .weB(serial_we),
     .addrB(serial_addr),
@@ -402,6 +423,7 @@ module sms
     .raster_vc(raster_vc),
     .cpuClockEnable(cpuClockEnable),
     .reset(loader_reset),
+    .cancel(serial_busy),
     .active(loader_menu),
     .pad_btn(R_btn_joy),
     .pad_u(game_u),
@@ -423,7 +445,7 @@ module sms
     .card_rom_len(card_rom_len)
   );
 
-  assign load_done = serial_load_done | card_load_done;
+  assign load_done = (serial_load_done | card_load_done) & ~serial_busy;
   assign codemasters = card_load_done ? card_codemasters : serial_codemasters;
   assign rom_len     = card_load_done ? card_rom_len : serial_rom_len;
   assign loader_we   = serial_we | card_we;
