@@ -3,8 +3,7 @@ module sms
 #(
   parameter c_vga_out     = 0, // 0; Just HDMI, 1: VGA and HDMI
   parameter c_lcd_hex     = 0, // SPI LCD HEX decoder
-  parameter c_diag        = 1, // 0: No led diagnostcs, 1: led diagnostics 
-  parameter c_volume      = 4  // Sound volume 0 - 15
+  parameter c_diag        = 1  // 0: No led diagnostcs, 1: led diagnostics
 )
 (
   input         clk_25mhz,
@@ -28,9 +27,6 @@ module sms
   inout	        usb_fpga_bd_dp,
   output        usb_fpga_pu_dp,
   output        usb_fpga_pu_dn,
-  // Audio
-  output [3:0]  audio_l,
-  output [3:0]  audio_r,
   // USB serial ROM loader. WiFi pins stay in the port list so the
   // board constraints still match; they are held idle.
   input         ftdi_txd,
@@ -108,6 +104,20 @@ module sms
   wire          vSync;
   wire [9:0]    raster_hc;
   wire [9:0]    raster_vc;
+  wire [9:0]    frame_height;
+  // Raster counters. On the FPGA these are hdmi cx/cy. Simulation has no
+  // ODDRX1F, so it counts the same 800 by frame_height frame locally.
+`ifdef SYNTHESIS
+  wire [11:0]   hdmi_cx;
+  wire [11:0]   hdmi_cy;
+  wire [9:0]    cx = hdmi_cx[9:0];
+  wire [9:0]    cy = hdmi_cy[9:0];
+  wire          sample_strobe;
+  wire signed [15:0] audio_sample;
+`else
+  reg [9:0]     cx = 0;
+  reg [9:0]     cy = 0;
+`endif
   
   generate
     genvar i;
@@ -199,6 +209,17 @@ module sms
 `else // SYNTHESIS
   wire clk_vga   = clk_25mhz;
   wire cpuClock  = clk_25mhz;
+
+  always @(posedge clk_vga) begin
+    if (cx == 10'd799) begin
+      cx <= 10'd0;
+      if (cy >= frame_height - 10'd1)
+        cy <= 10'd0;
+      else
+        cy <= cy + 10'd1;
+    end else
+      cx <= cx + 10'd1;
+  end
 `endif // SYNTHESIS
 
   // ===============================================================
@@ -304,6 +325,7 @@ module sms
   wire [7:0] hdmi_r, hdmi_g, hdmi_b;
 `else
   reg [31:0] rom_len = 0;
+  wire [7:0] hdmi_r, hdmi_g, hdmi_b;
 `endif
 
   // Cartridge ROM ignores address bits above its size, so a bank
@@ -549,7 +571,6 @@ module sms
   // ===============================================================
   // VGA
   // ===============================================================
-  wire        vga_de;
   wire [7:0]  vga_dout;
   reg [13:0]  vga_addr;
   wire        vga_wr = vdp_data_port && n_ioWR == 1'b0;
@@ -651,10 +672,11 @@ module sms
   video vga (
     .clk(clk_vga),
     .reset(reset),
+    .cx(cx),
+    .cy(cy),
     .vga_r(red),
     .vga_g(green),
     .vga_b(blue),
-    .vga_de(vga_de),
     .vga_hs(hSync),
     .vga_vs(vSync),
     .raster_hc(raster_hc),
@@ -697,6 +719,7 @@ module sms
     // stream the player sprites and the top HUD during blanking and do not
     // finish in an NTSC frame, so the raster samples a half-written SAT.
     .pal(sw[0]),
+    .frame_height(frame_height),
     .v_counter(v_counter),
     .h_counter(h_counter),
     .diag(vga_diag)
@@ -704,18 +727,48 @@ module sms
 
 `ifdef SYNTHESIS
 
-  // Convert VGA to HDMI
-  HDMI_out vga2dvid (
-    .pixclk(clk_vga),
-    .pixclk_x5(clk_hdmi),
-    .red  (hdmi_r),
-    .green(hdmi_g),
-    .blue (hdmi_b),
-    .vde  (vga_de),
-    .hSync(hSync),
-    .vSync(vSync),
-    .gpdi_dp(gpdi_dp),
-    .gpdi_dn(gpdi_dn)
+  // HDMI video and audio. cx/cy are the only raster counters.
+  // Timing matches video.v (800x524 NTSC, 800x626 PAL), not CEA 525.
+  // reset stays low so the raster free-runs with the CPU divider.
+  hdmi #(
+    .VIDEO_ID_CODE(0),
+    .IT_CONTENT(1'b1),
+    .DVI_OUTPUT(1'b0),
+    .AUDIO_RATE(48000),
+    .AUDIO_BIT_WIDTH(16),
+    .FRAME_WIDTH(800),
+    .FRAME_HEIGHT(524),
+    .SCREEN_WIDTH(640),
+    .SCREEN_HEIGHT(480),
+    .HSYNC_PULSE_START(16),
+    .HSYNC_PULSE_SIZE(96),
+    .VSYNC_PULSE_START(11),
+    .VSYNC_PULSE_SIZE(2),
+    .INVERT_POLARITY(1),
+    .TMDS_CLOCK_DDR(1),
+    .TMDS_DIFFERENTIAL(1)
+  ) u_hdmi (
+    .clk_pixel_x5(clk_hdmi),
+    .clk_pixel(clk_vga),
+    .sample_strobe(sample_strobe),
+    .reset(1'b0),
+    .rgb({hdmi_r, hdmi_g, hdmi_b}),
+    .audio_sample_word_0(audio_sample),
+    .audio_sample_word_1(audio_sample),
+    .frame_height_i({2'b0, frame_height}),
+    .tmds_p(gpdi_dp),
+    .tmds_n(gpdi_dn),
+    .cx(hdmi_cx),
+    .cy(hdmi_cy)
+  );
+
+  hdmi_audio_clk_gen #(
+    .CLK_HZ(25_000_000),
+    .AUDIO_HZ(48000)
+  ) u_audio_clk (
+    .clk_pixel(clk_vga),
+    .reset(1'b0),
+    .sample_strobe(sample_strobe)
   );
 `else // SYNTHESIS
 
@@ -816,7 +869,6 @@ module sms
   // Audio
   // ===============================================================
   wire [13:0] audio_dout;
-  wire aud_l, aud_r;
   wire sound_ready;
 
   sn76489 #(14) sound (
@@ -830,17 +882,22 @@ module sms
     .audio_out(audio_dout)
   );
 
-  // Use sigma-delta dac to get single-bit output
-  sigma_delta_dac dac (
-    .clk(cpuClock),
-    .ldatasum(audio_dout),
-    .rdatasum(audio_dout),
-    .left(aud_l),
-    .right(aud_r)
-  );
+`ifdef SYNTHESIS
+  // The PSG sample is unipolar and silent at 0. A leaky average removes
+  // that DC so HDMI LPCM is signed. The PSG is mono, so both channels match.
+  // Part-selects and concatenations are unsigned, so the signed wires
+  // below restore the sign bit before the arithmetic.
+  reg signed [23:0] audio_dc = 0;
+  wire signed [15:0] audio_raw = {2'b0, audio_dout};
+  wire signed [15:0] audio_dc_s = audio_dc[23:8];
+  wire signed [23:0] audio_step = {{8{audio_sample[15]}}, audio_sample};
+  assign audio_sample = audio_raw - audio_dc_s;
 
-  assign audio_l = aud_l ? c_volume : 0;
-  assign audio_r = audio_l;
+  always @(posedge clk_vga) begin
+    if (sample_strobe)
+      audio_dc <= audio_dc + audio_step;
+  end
+`endif
 
   // ===============================================================
   // Leds

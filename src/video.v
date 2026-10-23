@@ -8,6 +8,9 @@
 module video (
   input         clk,
   input         reset,
+  // Raster from the HDMI transmitter (simulation supplies its own).
+  input  [9:0]  cx,
+  input  [9:0]  cy,
   output [7:0]  vga_r,
   output [7:0]  vga_b,
   output [7:0]  vga_g,
@@ -51,6 +54,8 @@ module video (
   input         lines240,
   input         mask_col0,
   input         pal,
+  // NTSC 524, PAL 626. The HDMI cy counter wraps on this.
+  output [9:0]  frame_height,
   output [7:0]  v_counter,
   output [7:0]  h_counter,
   output reg [15:0] diag
@@ -167,8 +172,10 @@ module video (
   reg [7:0] sprite_font2 [0:NUM_ACTIVE_SPRITES-1];
   reg [7:0] sprite_font3 [0:NUM_ACTIVE_SPRITES-1];
 
-  reg [9:0] hc = 0;
-  reg [9:0] vc = 0;
+  // cx/cy free-run on the pixel clock and stay locked to the CPU
+  // divider: one SMS line is two VGA lines, 1600 pixel clocks, 228 T-states.
+  wire [9:0] hc = cx;
+  wire [9:0] vc = cy;
 
   reg [7:0] r_char;
   reg [7:0] font_line;
@@ -222,6 +229,7 @@ module video (
   // the HUD. 25 MHz / (800 * 626) is just under 50 Hz.
   localparam [8:0] PAL_LINES = 9'd313;
   wire [9:0] v_total = pal ? (VT + 10'd102) : VT;
+  assign frame_height = v_total;
   // Offset of this SMS line from the first active line, wrapping at the
   // PAL frame length. Active line 0 is vcounter 0.
   wire [8:0] pal_off = (sms_line >= active_y0) ? (sms_line - active_y0)
@@ -364,16 +372,8 @@ module video (
   reg [13:0] vid_addr;
   wire [7:0] vid_out; 
 
-  // Counters free-run so they stay locked to the CPU clock, which is
-  // generated as exactly 228 T-states per SMS line (1600 pixel clocks).
+  // cx/cy advance outside this module. Line events still sample them.
   always @(posedge clk) begin
-    if (hc == HT - 1) begin
-      hc <= 0;
-      if (vc == v_total - 1) begin
-        vc <= 0;
-      end else vc <= vc + 1;
-    end else hc <= hc + 1;
-
     if (reset) begin
       line_cnt <= 0;
       line_irq <= 0;

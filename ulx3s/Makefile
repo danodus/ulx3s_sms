@@ -3,8 +3,19 @@ FIRMWARE_HEX = ../firmware/sdmenu/firmware.hex
 VERILOG = ../src/sms.v ../src/ram.v ../src/vram.v ../src/rom.v \
 	  ../src/Z80/tv80_core.v ../src/Z80/tv80n.v ../src/Z80/tv80_mcode.v \
 	  ../src/Z80/tv80_reg.v ../src/Z80/tv80_alu.v \
-	  ../src/video.v ../src/hdmi.v \
-	  ../src/sn76489.v ../src/tone_generator.v ../src/sigmadelta.v\
+	  ../src/video.v \
+	  ../src/sn76489.v ../src/tone_generator.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_audio_clk_gen.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_audio_clock_regeneration_packet.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_audio_info_frame.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_audio_sample_packet.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_auxiliary_video_information_info_frame.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_packet_assembler.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_packet_picker.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_serializer_ecp5.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_source_product_description_info_frame.v \
+	  ../third_party/ecp5_hdmi_audio_video/rtl/hdmi_tmds_channel.v \
 	  ../src/lattice/ecp5pll.sv \
 	  ../src/sdram.v \
 	  ../src/serial_loader.v \
