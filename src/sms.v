@@ -279,6 +279,16 @@ module sms
   `endif // SYNTHESIS
   wire       pwr_up_reset_n = &pwr_up_reset_counter;
 
+  // HDMI starts with a reset of 65536 pixel clocks, after the PLLs lock,
+  // like the color-bar demo that the old Bravia accepts. The CPU divider
+  // is held at phase 0 for the same interval and both leave reset on the
+  // same clock, so cx = 0 still lines up with divider phase 0.
+`ifdef SYNTHESIS
+  wire       raster_rst = !pwr_up_reset_n;
+`else
+  wire       raster_rst = 1'b0;
+`endif
+
   always @(posedge cpuClock) begin
      if (!pwr_up_reset_n)
 `ifdef SYNTHESIS
@@ -921,7 +931,8 @@ module sms
 
   // HDMI video and audio. cx/cy are the only raster counters.
   // Timing matches video.v (800x524 NTSC, 800x626 PAL), not CEA 525.
-  // reset stays low so the raster free-runs with the CPU divider.
+  // The only reset is the power-up one (raster_rst), which also holds the
+  // CPU divider, so the raster still free-runs with it afterwards.
   hdmi #(
     .VIDEO_ID_CODE(0),
     .IT_CONTENT(1'b1),
@@ -943,7 +954,7 @@ module sms
     .clk_pixel_x5(clk_hdmi),
     .clk_pixel(clk_vga),
     .sample_strobe(sample_strobe),
-    .reset(1'b0),
+    .reset(raster_rst),
     .rgb({hdmi_r, hdmi_g, hdmi_b}),
     .audio_sample_word_0(audio_sample),
     .audio_sample_word_1(audio_sample),
@@ -959,7 +970,7 @@ module sms
     .AUDIO_HZ(48000)
   ) u_audio_clk (
     .clk_pixel(clk_vga),
-    .reset(1'b0),
+    .reset(raster_rst),
     .sample_strobe(sample_strobe)
   );
 `else // SYNTHESIS
@@ -1047,7 +1058,11 @@ module sms
 
   always @(posedge cpuClock) begin
     cpuClockEnable1 <= cpuClockEnable;
-    if (cpuSub == cpuLast) begin
+    if (raster_rst) begin
+      cpuSub <= 3'd0;
+      cpuSlot <= 6'd0;
+      cpuClockEnable <= 1'b0;
+    end else if (cpuSub == cpuLast) begin
       cpuSub <= 3'd0;
       cpuClockEnable <= 1'b0;
       if (cpuSlot == 6'd56)
