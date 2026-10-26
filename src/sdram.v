@@ -76,9 +76,42 @@ localparam STATE_LAST      = 3'd7;  // last state in cycle
 
 reg clkref_last;
 reg [2:0] q;
+`ifdef PAL
+// PAL's SDRAM clock is 3x the pixel clock, so a clkref high pulse is
+// 9 SDRAM clocks. This counter's second slot would still be running
+// when the pulse ends, and ACTIVE would use the CPU row while WRITE
+// used the loader column. One command per level stays inside the pulse.
+// NTSC is 4x and the free-running counter's second slot fits, so it
+// keeps the original machine below.
+reg       slot_lock = 1'b1;
+reg       slot_level = 1'b0;
 always @(posedge clk) begin
-	// SDRAM (state machine) clock is 85MHz. Synchronize this to systems 21.477 Mhz clock
-   // force counter to pass state LAST->FIRST exactly after the rising edge of clkref
+   clkref_last <= clkref;
+
+   if (reset != 0) begin
+      q <= (q == STATE_LAST) ? STATE_FIRST : q + 3'd1;
+      slot_lock <= 1'b1;
+      slot_level <= clkref;
+   end else if (~clkref_last & clkref) begin
+      q <= STATE_FIRST + 3'd1;
+      slot_lock <= 1'b0;
+      slot_level <= 1'b1;
+   end else if (slot_lock) begin
+      if (clkref != slot_level) begin
+         q <= STATE_FIRST + 3'd1;
+         slot_lock <= 1'b0;
+         slot_level <= clkref;
+      end else
+         q <= STATE_FIRST;
+   end else if (q == STATE_LAST) begin
+      q <= STATE_FIRST;
+      slot_lock <= 1'b1;
+   end else
+      q <= q + 3'd1;
+end
+`else
+always @(posedge clk) begin
+	// Force the counter to state 1 on the rising edge of clkref.
    clkref_last <= clkref;
 
    q <= q + 1'd1;
@@ -86,6 +119,7 @@ always @(posedge clk) begin
    if (~clkref_last & clkref) q<=STATE_FIRST + 1'd1;
 
 end
+`endif
 
 // ---------------------------------------------------------------------
 // --------------------------- startup/reset ---------------------------

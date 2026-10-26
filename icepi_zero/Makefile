@@ -31,7 +31,17 @@ VERILOG = icepi_zero_top.v \
 PIN_DEF = icepi_zero.lpf
 DEVICE ?= 25k
 PACKAGE ?= CABGA256
+# PAL=1 builds VIC 17 (720x576p at 50 Hz, 27 MHz) into bin_pal/.
+# The default is the NTSC raster, into bin/.
+ifeq ($(PAL),1)
+BUILDDIR = bin_pal
+NEXTPNR_FREQ = 27
+YOSYS_DEFS = verilog_defaults -add -DICEPI; verilog_defaults -add -DPAL;
+else
 BUILDDIR = bin
+NEXTPNR_FREQ = 25
+YOSYS_DEFS = verilog_defaults -add -DICEPI;
+endif
 
 compile: $(BUILDDIR)/toplevel.bit
 
@@ -62,16 +72,16 @@ $(BUILDDIR)/font8x8.hex: $(FONT_HEX)
 
 $(BUILDDIR)/toplevel.json: $(VERILOG) $(BUILDDIR)/firmware.hex $(BUILDDIR)/font8x8.hex
 	mkdir -p $(BUILDDIR)
-	yosys -p "verilog_defaults -add -DICEPI; read_verilog -sv $(filter %.sv,$(VERILOG)); read_verilog $(filter %.v,$(VERILOG)); synth_ecp5 -top icepi_zero_top -json $@"
+	yosys -p "$(YOSYS_DEFS) read_verilog -sv $(filter %.sv,$(VERILOG)); read_verilog $(filter %.v,$(VERILOG)); synth_ecp5 -top icepi_zero_top -json $@"
 
 $(BUILDDIR)/toplevel.config: $(PIN_DEF) $(BUILDDIR)/toplevel.json
-	nextpnr-ecp5 --$(DEVICE) --package $(PACKAGE) --speed 6 --timing-allow-fail --freq 25 --textcfg $@ --json $(filter-out $<,$^) --lpf $<
+	nextpnr-ecp5 --$(DEVICE) --package $(PACKAGE) --speed 6 --timing-allow-fail --freq $(NEXTPNR_FREQ) --textcfg $@ --json $(filter-out $<,$^) --lpf $<
 
 $(BUILDDIR)/toplevel.bit: $(BUILDDIR)/toplevel.config
 	ecppack --compress $< $@
 
 clean:
-	rm -rf $(BUILDDIR)
+	rm -rf bin bin_pal
 
 .SECONDARY:
 .PHONY: compile clean prog flash

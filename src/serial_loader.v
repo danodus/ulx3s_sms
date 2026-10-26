@@ -7,7 +7,8 @@
 // Mapper 0 is Sega, 1 is Codemasters. Any other value is rejected.
 // Length must be 1 .. 4 MiB. A match replies 'K' and sets load_done.
 // Anything else replies 'E' and waits for another frame.
-// Baud is 921600 8N1 at a 25 MHz clock (27 cycles per bit).
+// Baud is 921600 8N1. 27 cycles per bit at 25 MHz. The PAL build
+// runs the CPU clock at 27 MHz, where 29 cycles is about 1% fast.
 module serial_loader
 (
   input  wire        clk,
@@ -24,9 +25,15 @@ module serial_loader
   output reg  [31:0] rom_len
 );
 
+`ifdef PAL
+  localparam [4:0]  CLKS_PER_BIT = 5'd29;
+  localparam [4:0]  HALF_BIT     = 5'd14;
+  localparam [22:0] R_PERIOD     = 23'd5400000;   // 200 ms at 27 MHz
+`else
   localparam [4:0]  CLKS_PER_BIT = 5'd27;
   localparam [4:0]  HALF_BIT     = 5'd13;
   localparam [22:0] R_PERIOD     = 23'd5000000;   // 200 ms at 25 MHz
+`endif
   localparam [31:0] MAX_LEN      = 32'h00400000;  // 4 MiB
 
   localparam [2:0]
@@ -154,8 +161,19 @@ module serial_loader
   // High for the whole frame, including the reply. The Z80 stays
   // reset until this falls so a finished upload boots the new ROM.
   assign busy = (state != S_WAIT);
-  reg        hold_valid = 1'b0;
-  reg [7:0]  hold_data = 8'd0;
+  // PAL holds the CPU enable for one HDMI line (~32 us). At 921600
+  // that is about three UART bytes, so a one-byte skid drops them
+  // and the checksum the BIOS reads is wrong.
+  reg [7:0]  rx_fifo [0:7];
+  reg [2:0]  rx_wr = 3'd0;
+  reg [2:0]  rx_rd = 3'd0;
+  wire       rx_empty = (rx_wr == rx_rd);
+  wire       rx_full = (rx_wr + 3'd1 == rx_rd);
+  wire [7:0] rx_byte = rx_fifo[rx_rd];
+  wire       rx_take = !rx_empty && (
+    state == S_WAIT || state == S_LEN || state == S_MAP ||
+    ((state == S_DATA || state == S_CKSUM) && loader_write == 2'd0)
+  );
   reg [1:0]  len_idx = 2'd0;
   reg [31:0] rom_got = 32'd0;
   reg [7:0]  rom_xor = 8'd0;
@@ -163,7 +181,7 @@ module serial_loader
   reg        reply_armed = 1'b0;
   reg        map_ok = 1'b0;
   reg [22:0] beacon_cnt = R_PERIOD;
-  wire [31:0] len_next = {rom_len[23:0], hold_data};
+  wire [31:0] len_next = {rom_len[23:0], rx_byte};
 
   always @(posedge clk) begin
     tx_start <= 1'b0;
@@ -173,7 +191,8 @@ module serial_loader
       state        <= S_WAIT;
       load_done    <= 1'b0;
       codemasters  <= 1'b0;
-      hold_valid   <= 1'b0;
+      rx_wr        <= 3'd0;
+      rx_rd        <= 3'd0;
       loader_write <= 2'd0;
       loader_cnt   <= 1'b0;
       loader_addr  <= 24'd0;
@@ -195,6 +214,13 @@ module serial_loader
       if (loader_write == 2'd2 && !loader_cnt)
         loader_write <= 2'd0;
 
+      if (rx_valid && !rx_full) begin
+        rx_fifo[rx_wr] <= rx_data;
+        rx_wr <= rx_wr + 3'd1;
+      end
+      if (rx_take)
+        rx_rd <= rx_rd + 3'd1;
+
       if (state == S_WAIT) begin
         if (beacon_cnt == R_PERIOD) begin
           if (!tx_busy) begin
@@ -208,9 +234,8 @@ module serial_loader
 
       case (state)
         S_WAIT: begin
-          if (hold_valid) begin
-            hold_valid <= 1'b0;
-            if (hold_data == 8'h4C) begin // 'L'
+          if (!rx_empty) begin
+            if (rx_byte == 8'h4C) begin // 'L'
               state       <= S_LEN;
               len_idx     <= 2'd0;
               rom_len     <= 32'd0;
@@ -221,8 +246,7 @@ module serial_loader
         end
 
         S_LEN: begin
-          if (hold_valid) begin
-            hold_valid <= 1'b0;
+          if (!rx_empty) begin
             if (len_idx == 2'd3) begin
               rom_got     <= 32'd0;
               rom_xor     <= 8'd0;
@@ -243,23 +267,21 @@ module serial_loader
         end
 
         S_MAP: begin
-          if (hold_valid) begin
-            hold_valid  <= 1'b0;
+          if (!rx_empty) begin
             // Checksum covers the mapper byte and the payload.
-            rom_xor     <= hold_data;
-            map_ok      <= (hold_data == 8'h00 || hold_data == 8'h01);
-            codemasters <= (hold_data == 8'h01);
+            rom_xor     <= rx_byte;
+            map_ok      <= (rx_byte == 8'h00 || rx_byte == 8'h01);
+            codemasters <= (rx_byte == 8'h01);
             state       <= S_DATA;
           end
         end
 
         S_DATA: begin
-          if (hold_valid && loader_write == 2'd0) begin
-            hold_valid   <= 1'b0;
-            loader_data  <= hold_data;
+          if (!rx_empty && loader_write == 2'd0) begin
+            loader_data  <= rx_byte;
             loader_addr  <= rom_got[23:0];
             loader_write <= 2'd1;
-            rom_xor      <= rom_xor ^ hold_data;
+            rom_xor      <= rom_xor ^ rx_byte;
             rom_got      <= rom_got + 32'd1;
             if (rom_got + 32'd1 == rom_len)
               state <= S_CKSUM;
@@ -267,9 +289,8 @@ module serial_loader
         end
 
         S_CKSUM: begin
-          if (hold_valid && loader_write == 2'd0) begin
-            hold_valid  <= 1'b0;
-            reply_ok    <= map_ok && (hold_data == rom_xor);
+          if (!rx_empty && loader_write == 2'd0) begin
+            reply_ok    <= map_ok && (rx_byte == rom_xor);
             reply_armed <= 1'b0;
             state       <= S_REPLY;
           end
@@ -297,13 +318,6 @@ module serial_loader
         default: begin
         end
       endcase
-
-      // One-byte skid so a UART byte is not dropped while a
-      // SDRAM write is still finishing.
-      if (rx_valid) begin
-        hold_data  <= rx_data;
-        hold_valid <= 1'b1;
-      end
     end
   end
 

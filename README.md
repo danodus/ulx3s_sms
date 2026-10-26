@@ -30,7 +30,7 @@ It is written entirely in Verilog. The top level and VDP implementation are new.
 
 The rom cartridge is loaded into the SDRAM and executed from there. `tools/load_rom.py` checks for a Codemasters header and tells the core which mapper to use; everything else uses the Sega mapper.
 
-The VDP implementation generates a 640x480 raster. HDMI timing comes from that raster, including the PAL frame (626 lines instead of 524). Hold SELECT for two seconds while a game is running, or press START in the ROM menu, to select that frame. It does not use the timing of the original VDP chip. Legacy modes compatible with Texas Instruments TMS9918 chip are implemented for compatibility with the Sega SG 1000.
+The NTSC bitstream generates a 640x480 raster at 25 MHz (800x524). The PAL bitstream is CEA VIC 17, 720x576p at 50 Hz with a 27 MHz pixel clock and an 864x625 frame. The VDP runs 312 SMS lines and holds the CPU on the last HDMI line so the 228 T-state line stays aligned. It does not use the timing of the original VDP chip. Legacy modes compatible with Texas Instruments TMS9918 chip are implemented for compatibility with the Sega SG 1000.
 
 PSG audio is sent as signed 16-bit HDMI LPCM at 48 kHz, the same mono sample on both channels.
 
@@ -48,7 +48,13 @@ cd ulx3s
 make prog
 ```
 
-This builds the RV32 SD menu firmware, then synthesizes the bitstream.
+This builds the RV32 SD menu firmware, then synthesizes the NTSC bitstream into `bin/`.
+
+```
+make PAL=1 prog
+```
+
+builds the PAL bitstream into `bin_pal/` and programs that instead. The two images are separate. SELECT does not switch between them.
 
 It currently defaults to an 85F board.
 
@@ -60,15 +66,15 @@ cd icepi_zero
 make prog
 ```
 
-`make flash` writes the bitstream to SPI flash.
+`make flash` writes the bitstream to SPI flash. `make PAL=1 prog` and `make PAL=1 flash` do the same for the PAL image in `bin_pal/`.
 
 ## Gamepad Buttons
 
-Press START on the USB gamepad while a game is running to pause. In the SD card menu, START toggles the video standard. While a game is running, hold SELECT for two seconds to toggle it. Releasing SELECT sooner returns to the menu. Power-up is NTSC (262 lines). Each toggle switches to PAL (313 lines) and back. D4 lights while PAL is selected. Unlike the real hardware, the CPU clock speed is the same for both.
+Press START on the USB gamepad while a game is running to pause. SELECT returns to the ROM menu. The video standard is whichever bitstream was programmed. D4 stays lit on the PAL image. The PAL pixel clock is 27 MHz; NTSC stays at 25 MHz.
 
 ## USB Gamepad
 
-Press START on either gamepad while a game is running to pause. Press Select while a game is running to return to the SD card ROM menu. Hold Select for two seconds to toggle NTSC and PAL instead of returning to the menu. In the menu, START toggles the standard. On IcePi Zero, controller 2 does the same. The choice stays put when you return to the menu, so you can set PAL and then load a European ROM.
+Press START on either gamepad while a game is running to pause. Press SELECT while a game is running to return to the SD card ROM menu. On IcePi Zero, controller 2 does the same. To run a European ROM, program the PAL bitstream (`make PAL=1 prog` or `make PAL=1 flash`).
 
 ## Bugs
 

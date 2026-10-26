@@ -63,83 +63,80 @@
 | Dynamite Duke (Europe).sms | OK |
 | Dynamite Dux (Europe).sms | Bogus line flickering near player |
 | Dynamite Headdy (Brazil).sms | OK |
-| Earthworm Jim (Brazil).sms | |
-| Ecco - The Tides of Time (Brazil).sms | |
-| Ecco the Dolphin (Europe).sms | |
-| Enduro Racer (USA).sms | |
-| ESWAT (USA) (Rev-A).sms | |
-| F1 (Europe).sms | |
-| Fantastic Dizzy (Europe).sms | (Codemasters mapper) |
-| Fantasy Zone - The Maze (USA).sms | |
-| Fantasy Zone (USA) (Rev-A).sms | |
-| Fantasy Zone II - The Tears of Opa-Opa (USA).sms | |
-| Fire & Forget II (Europe).sms | |
-| Flash, The (Europe).sms | |
-| Forgotten Worlds (Europe).sms | |
-| G-LOC - Air Battle (Europe).sms | |
-| Gain Ground (Europe).sms | |
-| Galactic Protector (Japan).sms | |
-| Galaxy Force (USA).sms | |
-| Gangster Town (USA).sms | |
-| Gauntlet (Europe).sms | |
-| Ghost House (USA).sms | |
-| Ghostbusters (USA).sms | |
-| Ghouls 'n Ghosts (USA).sms | |
-| Global Defense (USA).sms | |
-| Golden Axe (USA).sms | |
-| Golden Axe Warrior (USA).sms | |
-| Golfamania (Europe).sms | |
-| Golvellius - Valley of Doom (USA).sms | |
-| GP Rider (Europe).sms | |
-| Great Baseball (USA).sms | |
-| Great Soccer (USA).sms | |
-| Hang-On (USA) (BIOS 3.4).sms | |
-| Hang-On & Safari Hunt (USA).sms | |
-| Incredible Hulk, The (Europe).sms | |
-| Indiana Jones and the Last Crusade - The Action Game (Europe).sms | |
-| James ''Buster'' Douglas Knockout Boxing (USA).sms | |
-| James Bond 007 - The Duel (Europe).sms | |
-| James Pond II - Codename RoboCod (Europe).sms | |
-| Joe Montana Football (USA).sms | |
-| Jungle Book, The (Europe, Brazil) (En).sms | |
-| Jurassic Park (Europe).sms | |
-| Kenseiden (USA).sms | |
-| King's Quest - Quest for the Crown (USA).sms | |
-| Klax (Europe).sms | |
-| Kung Fu Kid (USA).sms | |
-| Land of Illusion Starring Mickey Mouse (Europe).sms | |
-| Legend of Illusion Starring Mickey Mouse (Brazil).sms | |
-| Lemmings (Europe).sms | |
-| Line of Fire (Europe).sms | |
-| Lion King, The (Europe).sms | |
-| Lord of the Sword (USA).sms | |
-| Lucky Dime Caper Starring Donald Duck, The (Europe).sms | |
-| Marble Madness (Europe).sms | |
-| Master of Darkness (Europe).sms | |
-| Masters of Combat (Europe).sms | |
-| Maze Hunter 3-D (USA).sms | |
-| Megumi Rescue (Japan).sms | |
-| Mercs (Europe).sms | |
-| Michael Jackson's Moonwalker (USA).sms | |
-| Mickey's Ultimate Challenge (Brazil).sms | |
-| Micro Machines (Europe).sms | (Codemasters mapper) |
-| Miracle Warriors - Seal of the Dark Lord (USA).sms | |
-| Missile Defense 3-D (USA).sms | |
-| Monopoly (USA).sms | |
-| Montezuma's Revenge Featuring Panama Joe (USA).sms | |
-| Mortal Kombat (Europe).sms | |
-| Mortal Kombat 3 (Brazil).sms | |
-| Mortal Kombat II (Europe).sms | |
-| Ms. Pac-Man (Europe).sms | |
-| My Hero (USA).sms | |
-| New Zealand Story, The (Europe).sms | |
-| Ninja Gaiden (Europe).sms | |
-| Ninja, The (USA).sms | |
-| Olympic Gold - Barcelona '92 (Europe).sms | |
-| Operation Wolf (Europe).sms | |
-| OutRun (USA).sms | |
-| OutRun 3-D (Europe).sms | |
-| OutRun Europa (Europe).sms | |
+| Earthworm Jim (Brazil).sms | Flickering line below play area |
+| Ecco the Dolphin (Europe).sms | OK |
+| Enduro Racer (USA).sms | OK |
+| ESWAT (USA) (Rev-A).sms | OK |
+| F1 (Europe).sms | OK |
+| Fantastic Dizzy (Europe).sms | OK (Codemasters mapper, required PAL) |
+| Fantasy Zone - The Maze (USA).sms | Some bogus pixels around sprites |
+| Fantasy Zone (USA) (Rev-A).sms | OK |
+| Fantasy Zone II - The Tears of Opa-Opa (USA).sms | OK |
+| Fire & Forget II (Europe).sms | OK |
+| Flash, The (Europe).sms | OK |
+| Forgotten Worlds (Europe).sms | Bogus pixels around sprites |
+| G-LOC - Air Battle (Europe).sms | OK |
+| Gain Ground (Europe).sms | Bogus pixels around player sprite |
+| Galactic Protector (Japan).sms | No control (TODO: check Meka, Special controller required?) |
+| Galaxy Force (USA).sms | OK |
+| Gangster Town (USA).sms | OK (Requires gun) |
+| Gauntlet (Europe).sms | Garbage in transition and top-right text (TODO: check with emulator) |
+| Ghost House (USA).sms | OK |
+| Ghostbusters (USA).sms | OK |
+| Ghouls 'n Ghosts (USA).sms | TODO: Check with Meka, ladder offset? |
+| Global Defense (USA).sms | OK |
+| Golden Axe (USA).sms | OK |
+| Golden Axe Warrior (USA).sms | OK |
+| Golfamania (Europe).sms | OK |
+| Golvellius - Valley of Doom (USA).sms | Bogus pixels on player sprite |
+| GP Rider (Europe).sms | Screen flickering with garbage |
+| Great Baseball (USA).sms | OK |
+| Great Soccer (USA).sms | OK |
+| Hang-On & Safari Hunt (USA).sms | OK |
+| Incredible Hulk, The (Europe).sms | OK |
+| Indiana Jones and the Last Crusade - The Action Game (Europe).sms | OK |
+| James ''Buster'' Douglas Knockout Boxing (USA).sms | OK |
+| James Bond 007 - The Duel (Europe).sms | OK |
+| James Pond II - Codename RoboCod (Europe).sms | OK |
+| Joe Montana Football (USA).sms | OK |
+| Jungle Book, The (Europe, Brazil) (En).sms | OK |
+| Jurassic Park (Europe).sms | OK |
+| Kenseiden (USA).sms | OK |
+| King's Quest - Quest for the Crown (USA).sms | OK |
+| Klax (Europe).sms | OK |
+| Kung Fu Kid (USA).sms | OK |
+| Land of Illusion Starring Mickey Mouse (Europe).sms | OK |
+| Legend of Illusion Starring Mickey Mouse (Brazil).sms | Bubbles at the bottom of the screen (should be black) |
+| Lemmings (Europe).sms | OK |
+| Line of Fire (Europe).sms | TODO: compare with emulator |
+| Lion King, The (Europe).sms | OK |
+| Lord of the Sword (USA).sms | OK |
+| Lucky Dime Caper Starring Donald Duck, The (Europe).sms | OK |
+| Marble Madness (Europe).sms | OK |
+| Master of Darkness (Europe).sms | Bogus pixels around sprite |
+| Masters of Combat (Europe).sms | OK |
+| Maze Hunter 3-D (USA).sms | OK |
+| Mercs (Europe).sms | OK |
+| Michael Jackson's Moonwalker (USA).sms | OK |
+| Mickey's Ultimate Challenge (Brazil).sms | OK |
+| Micro Machines (Europe).sms | (Codemasters mapper) OK |
+| Miracle Warriors - Seal of the Dark Lord (USA).sms | OK |
+| Missile Defense 3-D (USA).sms | OK |
+| Monopoly (USA).sms | OK |
+| Montezuma's Revenge Featuring Panama Joe (USA).sms | OK |
+| Mortal Kombat (Europe).sms | OK |
+| Mortal Kombat 3 (Brazil).sms | OK |
+| Mortal Kombat II (Europe).sms | OK |
+| Ms. Pac-Man (Europe).sms | OK |
+| My Hero (USA).sms | OK |
+| New Zealand Story, The (Europe).sms | OK |
+| Ninja Gaiden (Europe).sms | Flickering line under enemy sprites |
+| Ninja, The (USA).sms | OK |
+| Olympic Gold - Barcelona '92 (Europe).sms | OK |
+| Operation Wolf (Europe).sms | Requires gun |
+| OutRun (USA).sms | OK |
+| OutRun 3-D (Europe).sms | OK |
+| OutRun Europa (Europe).sms | OK |
 | Pac-Mania (Europe).sms | |
 | Paperboy (USA).sms | |
 | Penguin Land (USA).sms | |

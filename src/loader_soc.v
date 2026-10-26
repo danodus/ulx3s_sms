@@ -60,7 +60,9 @@ module loader_soc
 
   reg  [31:0] io_rdata;
   assign mem_rbusy = 1'b0;
-  assign mem_wbusy = 1'b0;
+  // The PAL raster holds cpuClockEnable low for a whole HDMI line.
+  // A store that does not wait would post more bytes while the SDRAM
+  // pump is stuck, and those bytes never reach the cartridge.
 
   wire [RAM_AW-1:0] ram_word_address = mem_address[RAM_AW+1:2];
 
@@ -168,6 +170,10 @@ module loader_soc
     .codemasters(card_codemasters),
     .rom_len(card_rom_len)
   );
+
+  // byte_wstrb is the cycle before card_weB rises, so the store is
+  // stalled from the moment it is posted until the pump finishes.
+  assign mem_wbusy = byte_wstrb || card_weB;
 
   always @(posedge clk) begin
     byte_wstrb  <= 1'b0;

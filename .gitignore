@@ -1,4 +1,5 @@
 bin/
+bin_pal/
 roms/msx.mem
 roms/systemroms/
 roms/systemroms.zip

@@ -1,6 +1,7 @@
 `default_nettype none
 // IcePi Zero rev 1.2. The 50 MHz oscillator is the PLL reference.
-// Pixel, CPU, and PSG clocks stay 25 MHz inside sms.
+// The NTSC build keeps a 25 MHz pixel clock. The PAL build (yosys -DPAL)
+// uses 27 MHz for VIC 17 and does not switch standards at runtime.
 module icepi_zero_top
 (
   input         clk,

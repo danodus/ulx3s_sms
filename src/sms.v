@@ -4,8 +4,8 @@ module sms
   parameter c_vga_out     = 0, // 0; Just HDMI, 1: VGA and HDMI
   parameter c_lcd_hex     = 0, // SPI LCD HEX decoder
   parameter c_diag        = 1, // 0: No led diagnostcs, 1: led diagnostics
-  // Board oscillator. ULX3S is 25 MHz. IcePi Zero is 50 MHz; the
-  // pixel, CPU, and PSG clocks stay 25 MHz either way.
+  // Board oscillator. ULX3S is 25 MHz. IcePi Zero is 50 MHz.
+  // NTSC pixel/CPU/PSG clocks are 25 MHz. The PAL build uses 27 MHz.
   parameter c_clk_in_hz   = 25_000_000
 )
 (
@@ -196,6 +196,59 @@ module sms
   // ===============================================================
 `ifdef SYNTHESIS
   wire clk_sdram_locked;
+  wire clk_usb_locked;
+  wire clk_usb;
+  wire clk_hdmi;
+  wire clk_vga;
+  wire cpuClock;
+  wire clk_sdram;
+`ifdef PAL
+  // 135, 27, and 81 MHz share a 405 MHz VCO, so the SDRAM clock is
+  // exactly 3x the pixel clock and cannot drift against it. A separate
+  // 100 MHz PLL does drift, and the BIOS checksum then reads bad bytes.
+  // 108 MHz (4x) also divides that family of VCOs, but two RAS-to-CAS
+  // cycles there are 18.5 ns and these chips need 20 ns. At 81 MHz the
+  // two cycles are 24.7 ns. The second PLL is only the 12 MHz USB clock,
+  // derived from a 100 MHz primary the same way as before.
+  wire clk_hdmi_locked;
+  wire clk_sys_locked;
+  wire [3:0] hdmi_clocks;
+  wire [3:0] sys_clocks;
+  assign clk_sdram_locked = clk_hdmi_locked;
+  assign clk_usb_locked = clk_sys_locked;
+  ecp5pll
+  #(
+    .in_hz(c_clk_in_hz),
+    .out0_hz(135*1000000),
+    .out1_hz( 27*1000000),
+    .out2_hz( 81*1000000),                // SDRAM core
+    .out3_hz( 81*1000000), .out3_deg(180) // SDRAM chip
+  )
+  ecp5pll_hdmi
+  (
+    .clk_i(clk_25mhz),
+    .clk_o(hdmi_clocks),
+    .locked(clk_hdmi_locked)
+  );
+  ecp5pll
+  #(
+    .in_hz(c_clk_in_hz),
+    .out0_hz(100*1000000),
+    .out1_hz( 12*1000000)
+  )
+  ecp5pll_sys
+  (
+    .clk_i(clk_25mhz),
+    .clk_o(sys_clocks),
+    .locked(clk_sys_locked)
+  );
+  assign clk_hdmi  = hdmi_clocks[0];
+  assign clk_vga   = hdmi_clocks[1];
+  assign cpuClock  = hdmi_clocks[1];
+  assign clk_sdram = hdmi_clocks[2];
+  assign sdram_clk = hdmi_clocks[3];
+  assign clk_usb   = sys_clocks[1];
+`else
   wire [3:0] clocks;
   ecp5pll
   #(
@@ -211,17 +264,22 @@ module sms
     .clk_o(clocks),
     .locked(clk_sdram_locked)
   );
-  wire clk_hdmi  = clocks[0];
-  wire clk_vga   = clocks[1];
-  wire cpuClock  = clocks[1];
-  wire clk_sdram = clocks[2];
+  assign clk_hdmi  = clocks[0];
+  assign clk_vga   = clocks[1];
+  assign cpuClock  = clocks[1];
+  assign clk_sdram = clocks[2];
   assign sdram_clk = clocks[3]; // phase shifted for chip
+`endif
 `else // SYNTHESIS
   wire clk_vga   = clk_25mhz;
   wire cpuClock  = clk_25mhz;
 
   always @(posedge clk_vga) begin
+`ifdef PAL
+    if (cx == 10'd863) begin
+`else
     if (cx == 10'd799) begin
+`endif
       cx <= 10'd0;
       if (cy >= frame_height - 10'd1)
         cy <= 10'd0;
@@ -236,10 +294,10 @@ module sms
   // USB HID Host Clock generation
   // ===============================================================
 `ifdef SYNTHESIS
-  wire clk_usb_locked;
-  wire clk_usb;
+`ifndef PAL
   // usb_pll is two PLLs and only accepts 25 MHz. An ECP5-25 has two
   // PLLs total, so a 50 MHz board uses the single 100-to-12 stage.
+  // The PAL build takes 12 MHz from the system PLL instead.
   generate
     if (c_clk_in_hz == 25_000_000) begin : usb_clk_25
       usb_pll ecp5pll_usb_inst
@@ -259,6 +317,7 @@ module sms
       );
     end
   endgenerate
+`endif // PAL
 `endif
  
   // ===============================================================
@@ -382,12 +441,14 @@ module sms
     p2_joy <= {game2_r, game2_l, game2_d, game2_u, game2_a, game2_b};
   reg joypad2 = 1'b0;
 
-  // PAL is 313 lines, NTSC is 262. Power-up is NTSC, which is what SW1
-  // off used to select. The DIP switches are unused. While a game is
-  // running, START is the pause button and holding SELECT for two
-  // seconds toggles this. A shorter SELECT returns to the ROM menu.
-  // In the menu, START toggles it.
-  reg pal_mode = 1'b0;
+  // The video standard is the bitstream. PAL is VIC 17 (312 SMS
+  // lines). NTSC is the 524-line raster. SELECT does not switch
+  // images; a reload from flash is not wired up.
+`ifdef PAL
+  wire pal_mode = 1'b1;
+`else
+  wire pal_mode = 1'b0;
+`endif
   // Pause NMI. Held low for the whole START press, and kept high in
   // reset and in the menu.
   reg nmi_n = 1'b1;
@@ -444,11 +505,10 @@ module sms
   endfunction
 
 `ifdef SYNTHESIS
-  // Power-up and the power button return to the ROM menu. Select
-  // does too, unless it was held for two seconds, which toggles
-  // PAL/NTSC instead. The Z80 stays reset until a ROM is loaded. A
-  // USB upload also holds it in reset, then boots that ROM, including
-  // when the previous ROM came from the SD menu. Each pad is separate.
+  // Power-up, the power button, and SELECT return to the ROM menu.
+  // The Z80 stays reset until a ROM is loaded. A USB upload also
+  // holds it in reset, then boots that ROM, including when the
+  // previous ROM came from the SD menu. Each pad is separate.
   reg menu_req = 1'b0;
   reg wait_sta1 = 1'b0;
   reg wait_sta2 = 1'b0;
@@ -456,12 +516,6 @@ module sms
   reg nmi_pad2 = 1'b0;
   reg sel1_down = 1'b0;
   reg sel2_down = 1'b0;
-  reg sel1_fired = 1'b0;
-  reg sel2_fired = 1'b0;
-  // Two seconds at the 25 MHz CPU clock.
-  localparam [25:0] SEL_HOLD = 26'd50_000_000;
-  reg [25:0] sel1_cnt = 26'd0;
-  reg [25:0] sel2_cnt = 26'd0;
   // The HID host registers the pads on the USB clock, so two flops
   // close the crossing.
   reg [1:0] sta1_sync = 2'b0;
@@ -482,16 +536,10 @@ module sms
       nmi_pad2  <= 1'b0;
       sel1_down <= 1'b0;
       sel2_down <= 1'b0;
-      sel1_fired <= 1'b0;
-      sel2_fired <= 1'b0;
-      sel1_cnt  <= 26'd0;
-      sel2_cnt  <= 26'd0;
     end else begin
       if (sta1_sync[1] && !wait_sta1) begin
         wait_sta1 <= 1'b1;
-        if (loader_menu)
-          pal_mode <= ~pal_mode;
-        else
+        if (!loader_menu)
           nmi_pad1 <= 1'b1;
       end else if (!sta1_sync[1]) begin
         wait_sta1 <= 1'b0;
@@ -500,50 +548,29 @@ module sms
 
       if (sta2_sync[1] && !wait_sta2) begin
         wait_sta2 <= 1'b1;
-        if (loader_menu)
-          pal_mode <= ~pal_mode;
-        else
+        if (!loader_menu)
           nmi_pad2 <= 1'b1;
       end else if (!sta2_sync[1]) begin
         wait_sta2 <= 1'b0;
         nmi_pad2  <= 1'b0;
       end
 
-      // Count while SELECT is held. At two seconds, toggle once and
-      // do not return to the menu when the button is released. A
-      // shorter press requests the menu on release.
+      // SELECT returns to the menu on release. It does not switch
+      // the video standard; that is a separate bitstream.
       if (sel1_sync[1] && load_done) begin
         sel1_down <= 1'b1;
-        if (!sel1_fired) begin
-          if (sel1_cnt >= SEL_HOLD - 26'd1) begin
-            sel1_fired <= 1'b1;
-            pal_mode <= ~pal_mode;
-          end else
-            sel1_cnt <= sel1_cnt + 26'd1;
-        end
       end else begin
-        if (sel1_down && !sel1_fired && load_done)
+        if (sel1_down && load_done)
           menu_req <= 1'b1;
         sel1_down <= 1'b0;
-        sel1_fired <= 1'b0;
-        sel1_cnt <= 26'd0;
       end
 
       if (sel2_sync[1] && load_done) begin
         sel2_down <= 1'b1;
-        if (!sel2_fired) begin
-          if (sel2_cnt >= SEL_HOLD - 26'd1) begin
-            sel2_fired <= 1'b1;
-            pal_mode <= ~pal_mode;
-          end else
-            sel2_cnt <= sel2_cnt + 26'd1;
-        end
       end else begin
-        if (sel2_down && !sel2_fired && load_done)
+        if (sel2_down && load_done)
           menu_req <= 1'b1;
         sel2_down <= 1'b0;
-        sel2_fired <= 1'b0;
-        sel2_cnt <= 26'd0;
       end
 
       // Drop pause when the menu returns, even if START is still held.
@@ -870,11 +897,23 @@ module sms
     end
   end
       
+  // VIC 17 has 625 lines. 312 SMS lines use 624 of them. Hold the
+  // last line so the 228-T-state divider stays aligned with hc.
+`ifdef PAL
+  wire pal_line_hold = (cy == 10'd624);
+  wire [9:0] vdp_cx = pal_line_hold ? 10'd863 : cx;
+  wire [9:0] vdp_cy = pal_line_hold ? 10'd623 : cy;
+`else
+  wire pal_line_hold = 1'b0;
+  wire [9:0] vdp_cx = cx;
+  wire [9:0] vdp_cy = cy;
+`endif
+
   video vga (
     .clk(clk_vga),
     .reset(reset),
-    .cx(cx),
-    .cy(cy),
+    .cx(vdp_cx),
+    .cy(vdp_cy),
     .vga_r(red),
     .vga_g(green),
     .vga_b(blue),
@@ -916,11 +955,12 @@ module sms
     .lines224(r_vdp[0][1] & r_vdp[1][4]),
     .lines240(r_vdp[0][1] & r_vdp[1][3]),
     .mask_col0(r_vdp[0][5]),
-    // pal_mode: PAL, 313 lines. European games such as The
-    // Addams Family stream the player sprites and the top HUD during
-    // blanking and do not finish in an NTSC frame, so the raster samples
-    // a half-written SAT.
+    // pal_mode: PAL bitstream, 312 SMS lines. European games such as
+    // The Addams Family stream the player sprites and the top HUD
+    // during blanking and do not finish in an NTSC frame, so the
+    // raster samples a half-written SAT.
     .pal(pal_mode),
+    .line_hold(pal_line_hold),
     .frame_height(frame_height),
     .v_counter(v_counter),
     .h_counter(h_counter),
@@ -930,23 +970,47 @@ module sms
 `ifdef SYNTHESIS
 
   // HDMI video and audio. cx/cy are the only raster counters.
-  // Timing matches video.v (800x524 NTSC, 800x626 PAL), not CEA 525.
+  // NTSC matches video.v (800x524). PAL is CEA VIC 17 (864x625) and
+  // frame_height_i stays 0 so the core uses that total.
   // The only reset is the power-up one (raster_rst), which also holds the
   // CPU divider, so the raster still free-runs with it afterwards.
+`ifdef PAL
+  localparam [11:0] HDMI_VIC = 12'd17;
+  localparam HDMI_CLK_HZ = 27_000_000;
+  localparam HDMI_FRAME_W = 864;
+  localparam HDMI_FRAME_H = 625;
+  localparam HDMI_SCREEN_W = 720;
+  localparam HDMI_SCREEN_H = 576;
+  localparam HDMI_HSYNC_START = 12;
+  localparam HDMI_HSYNC_SIZE = 64;
+  localparam HDMI_VSYNC_START = 5;
+  localparam HDMI_VSYNC_SIZE = 5;
+`else
+  localparam [11:0] HDMI_VIC = 12'd0;
+  localparam HDMI_CLK_HZ = 25_000_000;
+  localparam HDMI_FRAME_W = 800;
+  localparam HDMI_FRAME_H = 524;
+  localparam HDMI_SCREEN_W = 640;
+  localparam HDMI_SCREEN_H = 480;
+  localparam HDMI_HSYNC_START = 16;
+  localparam HDMI_HSYNC_SIZE = 96;
+  localparam HDMI_VSYNC_START = 11;
+  localparam HDMI_VSYNC_SIZE = 2;
+`endif
   hdmi #(
-    .VIDEO_ID_CODE(0),
+    .VIDEO_ID_CODE(HDMI_VIC),
     .IT_CONTENT(1'b1),
     .DVI_OUTPUT(1'b0),
     .AUDIO_RATE(48000),
     .AUDIO_BIT_WIDTH(16),
-    .FRAME_WIDTH(800),
-    .FRAME_HEIGHT(524),
-    .SCREEN_WIDTH(640),
-    .SCREEN_HEIGHT(480),
-    .HSYNC_PULSE_START(16),
-    .HSYNC_PULSE_SIZE(96),
-    .VSYNC_PULSE_START(11),
-    .VSYNC_PULSE_SIZE(2),
+    .FRAME_WIDTH(HDMI_FRAME_W),
+    .FRAME_HEIGHT(HDMI_FRAME_H),
+    .SCREEN_WIDTH(HDMI_SCREEN_W),
+    .SCREEN_HEIGHT(HDMI_SCREEN_H),
+    .HSYNC_PULSE_START(HDMI_HSYNC_START),
+    .HSYNC_PULSE_SIZE(HDMI_HSYNC_SIZE),
+    .VSYNC_PULSE_START(HDMI_VSYNC_START),
+    .VSYNC_PULSE_SIZE(HDMI_VSYNC_SIZE),
     .INVERT_POLARITY(1),
     .TMDS_CLOCK_DDR(1),
     .TMDS_DIFFERENTIAL(1)
@@ -958,7 +1022,7 @@ module sms
     .rgb({hdmi_r, hdmi_g, hdmi_b}),
     .audio_sample_word_0(audio_sample),
     .audio_sample_word_1(audio_sample),
-    .frame_height_i({2'b0, frame_height}),
+    .frame_height_i(12'd0),
     .tmds_p(gpdi_dp),
     .tmds_n(gpdi_dn),
     .cx(hdmi_cx),
@@ -966,7 +1030,7 @@ module sms
   );
 
   hdmi_audio_clk_gen #(
-    .CLK_HZ(25_000_000),
+    .CLK_HZ(HDMI_CLK_HZ),
     .AUDIO_HZ(48000)
   ) u_audio_clk (
     .clk_pixel(clk_vga),
@@ -1042,17 +1106,25 @@ module sms
   // ===============================================================
   // CPU clock
   // ===============================================================
-  // An SMS line is exactly 228 T-states. A line here is two VGA lines,
-  // 1600 pixel clocks, so a divide-by-7 (228.57 T-states) walks relative
-  // to the raster. Hang-On samples the V counter from the line IRQ and
-  // indexes the road scroll by that value; a walking phase moves the
-  // sample onto the next line and the curve flickers.
-  // 228 edges in 1600 clocks is 56 periods of 7 plus one period of 8 in
-  // every 400 clocks. The enable stays high for the last 3 clocks of
-  // every period, matching the old duty cycle the PSG and SDRAM use.
+  // An SMS line is exactly 228 T-states. Hang-On samples the V counter
+  // from the line IRQ and indexes the road scroll by that value; a
+  // walking phase moves the sample onto the next line and the curve
+  // flickers. The enable stays high for the last 3 clocks of every
+  // period, matching the duty cycle the PSG and SDRAM use.
+  // NTSC: 228 edges in 1600 clocks. 56 periods of 7 plus one of 8
+  // in every 400 clocks.
+  // PAL: 228 edges in 1728 clocks (two 864-clock VIC 17 lines).
+  // 19 T-states in 144 clocks is 11 periods of 8 and 8 of 7.
+  // 1728 / 144 = 12, so 624 HDMI lines stay phase-locked. Line 624 holds.
   reg [2:0] cpuSub = 0;
-  reg [5:0] cpuSlot = 0; // 0..56 within each 400-clock group
-  wire      cpuLong = (cpuSlot == 6'd0);
+  reg [5:0] cpuSlot = 0;
+`ifdef PAL
+  wire cpuLong = (cpuSlot < 6'd11);
+  localparam [5:0] CPU_SLOT_LAST = 6'd18;
+`else
+  wire cpuLong = (cpuSlot == 6'd0);
+  localparam [5:0] CPU_SLOT_LAST = 6'd56;
+`endif
   wire [2:0] cpuLast = cpuLong ? 3'd7 : 3'd6;
   wire [2:0] cpuHighAt = cpuLong ? 3'd5 : 3'd4;
 
@@ -1062,10 +1134,12 @@ module sms
       cpuSub <= 3'd0;
       cpuSlot <= 6'd0;
       cpuClockEnable <= 1'b0;
+    end else if (pal_line_hold) begin
+      cpuClockEnable <= 1'b0;
     end else if (cpuSub == cpuLast) begin
       cpuSub <= 3'd0;
       cpuClockEnable <= 1'b0;
-      if (cpuSlot == 6'd56)
+      if (cpuSlot == CPU_SLOT_LAST)
         cpuSlot <= 6'd0;
       else
         cpuSlot <= cpuSlot + 6'd1;

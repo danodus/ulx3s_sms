@@ -54,13 +54,37 @@ module video (
   input         lines240,
   input         mask_col0,
   input         pal,
-  // NTSC 524, PAL 626. The HDMI cy counter wraps on this.
+  // VIC 17 line 624. The raster inputs are held, and so is this pipeline,
+  // so a stuck hc does not repeat a sprite fetch.
+  input         line_hold,
+  // NTSC 524. PAL is VIC 17, 625, with the VDP picture in the first 480.
   output [9:0]  frame_height,
   output [7:0]  v_counter,
   output [7:0]  h_counter,
   output reg [15:0] diag
 );
 
+`ifdef PAL
+  // VIC 17, 720x576p at 50 Hz. The 256-pixel picture is doubled and
+  // centered in the 720 active clocks (HB = 104). The VDP window stays
+  // 480 lines. HDMI lines 480..575 are active on the wire and black here.
+  parameter HA = 720;
+  parameter HS  = 64;
+  parameter HFP = 12;
+  parameter HBP = 68;
+  parameter HT  = HA + HS + HFP + HBP;
+  parameter HB = 104;
+  parameter HB2 = HB/2;
+  parameter HBadj = 12;
+
+  parameter VA = 480;
+  parameter VS  = 2;
+  parameter VFP = 11;
+  parameter VBP = 132;
+  parameter VT  = VA + VS + VFP + VBP; // 625
+  parameter VB = 48;
+  parameter VB2 = VB/2;
+`else
   // VGA output parameters for 60hz 640x480
   parameter HA = 640;
   parameter HS  = 96;
@@ -78,6 +102,7 @@ module video (
   parameter VT  = VA + VS + VFP + VBP;
   parameter VB = 48;
   parameter VB2 = VB/2;
+`endif
 
   // Values for mode 4
   localparam NUM_SPRITES = 64;
@@ -223,18 +248,18 @@ module video (
   // for active lines only; a ninth sprite in the border does not set it.
   wire [8:0] next_sms_line = sms_line + 9'd1;
   wire sprite_limit_line = (next_sms_line >= active_y0) && (next_sms_line < active_y0 + active_lines);
-  // NTSC is 262 SMS lines, two VGA lines each, filling VT. PAL is 313;
-  // the extra 51 lines are vertical back porch so a European frame handler
-  // can finish streaming sprite tiles and the SAT before the raster reaches
-  // the HUD. 25 MHz / (800 * 626) is just under 50 Hz.
-  localparam [8:0] PAL_LINES = 9'd313;
-  wire [9:0] v_total = pal ? (VT + 10'd102) : VT;
-  assign frame_height = v_total;
+  // NTSC is 262 SMS lines, two HDMI lines each, filling VT (524).
+  // PAL is VIC 17, 625 HDMI lines. 313 SMS lines would be 626, so this
+  // frame is 312 and the last HDMI line is held. The wrap therefore
+  // ends at $FE instead of $FF. The extra blanking is still where a
+  // European frame handler finishes the SAT before the HUD.
+  localparam [8:0] PAL_LINES = 9'd312;
+  assign frame_height = VT;
   // Offset of this SMS line from the first active line, wrapping at the
   // PAL frame length. Active line 0 is vcounter 0.
   wire [8:0] pal_off = (sms_line >= active_y0) ? (sms_line - active_y0)
                                         : (sms_line + PAL_LINES - active_y0);
-  // PAL 192: 00-F2, BA-FF. 224: 00-FF, 00-02, CA-FF. 240: 00-FF, 00-0A, D2-FF.
+  // PAL 192: 00-F2, BA-FE. 224: 00-FF, 00-02, CA-FE. 240: 00-FF, 00-0A, D2-FE.
   wire [7:0] pal_vc_192 = (pal_off < 9'd243) ? pal_off[7:0]
                                              : (8'hBA + (pal_off - 9'd243));
   wire [7:0] pal_vc_224 = (pal_off < 9'd256) ? pal_off[7:0] :
@@ -379,7 +404,7 @@ module video (
       line_irq <= 0;
       frame_irq <= 0;
       x_scroll_latch <= 0;
-    end else begin
+    end else if (!line_hold) begin
       // Latch horizontal scroll at the start of the SMS line, with the line
       // interrupt above. A write to R8 during the line applies on the next one.
       if (hc == 0 && vc[0] == 0)
@@ -445,26 +470,31 @@ module video (
 
   // Calculate x_char and x_pix for mode 0
   always @(posedge clk) begin
-    if (hc[0] == 1) begin
-      x_pix <= x_pix + 1;
-      if (x_pix == (char_width - 1)) begin
-        x_pix <= 0;
-        x_char <= x_char + 1;
+    if (!line_hold) begin
+      if (hc[0] == 1) begin
+        x_pix <= x_pix + 1;
+        if (x_pix == (char_width - 1)) begin
+          x_pix <= 0;
+          x_char <= x_char + 1;
+        end
       end
-    end
 
-    // Get ready for start of line
-    if (hc == HB - (char_width << 1) - 1) begin
-      x_pix <= 0;
-      x_char <= 63;
+      // Get ready for start of line
+      if (hc == HB - (char_width << 1) - 1) begin
+        x_pix <= 0;
+        x_char <= 63;
+      end
     end
   end
 
   integer i;
-  // Index of sprite during sprite scan
-  wire [1:0] sprite_index = (hc[5:1] - 1) >> 2;
-  wire [7:0] sprite_pat = sprite_pattern[hc[2:0]];
-  wire [3:0] sprite_lin = sprite_y_line[hc[2:0]];
+  // Clocks since the end of the active picture. The scan uses this
+  // as the SAT index. HA is 640 in NTSC, so the low bits of hc match.
+  // PAL is 720, and hc[5:0] there starts at 16, which reads the wrong X.
+  wire [9:0] hc_off = hc - HA;
+  wire [1:0] sprite_index = (hc_off[5:1] - 1) >> 2;
+  wire [7:0] sprite_pat = sprite_pattern[hc_off[2:0]];
+  wire [3:0] sprite_lin = sprite_y_line[hc_off[2:0]];
   // Keep this 8 bits wide. A wider compare zero-extends before the
   // subtract, so Y=$FF never wraps onto the top scanlines.
   wire [7:0] mode4_sprite_dy = y - vid_out;
@@ -478,12 +508,12 @@ module video (
       screen_color <= 0;
       sprite_overflow <= 0;
       spritex <= 5'h1f;
-    end else if (!video_on) begin
+    end else if (!line_hold && !video_on) begin
       if (status_read) begin
         sprite_overflow <= 0;
         spritex <= 5'h1f;
       end
-    end else if (video_on) begin
+    end else if (!line_hold && video_on) begin
       // A hit later in this block is the sprite that overflowed this
       // cycle, so it stays pending across the read that clears the old one.
       if (status_read) begin
@@ -602,7 +632,7 @@ module video (
           if (mode == 4) begin
             if (vc[0] == 1) begin
               if (hc >= HA && hc < SPRITE_SCAN_END)
-                vid_addr <= sprite_attr_addr + hc[5:0]; // Address of y attribute
+                vid_addr <= sprite_attr_addr + hc_off[5:0]; // Address of y attribute
               if (hc >= HA + 2 && hc < SPRITE_SCAN_END + 2 && !sprites_done) begin
                 // Y=$D0 ends the list in 192-line mode only. In 224/240
                 // that Y is a real sprite position.
@@ -611,7 +641,7 @@ module video (
                 // onto the top of the screen (Y=$FF is scanline 0).
                 else if (mode4_sprite_dy < mode4_sprite_h) begin
                   if (num_sprites < NUM_ACTIVE_SPRITES) begin
-                    sprite_num[num_sprites] <= hc[6:0] - 2;
+                    sprite_num[num_sprites] <= hc_off[6:0] - 2;
                     sprite_y[num_sprites] <= vid_out;
                     num_sprites <= num_sprites + 1;
                   end else begin
@@ -619,67 +649,67 @@ module video (
                     // Status bits 4-0 hold the low 5 bits of the SAT index.
                     if (sprite_limit_line) begin
                       sprite_overflow <= 1;
-                      spritex <= hc[6:0] - 7'd2;
+                      spritex <= hc_off[6:0] - 7'd2;
                     end
                   end
                 end
               end
               // Read the sprite x values for the row
               if (hc >= SPRITE_SCAN_END && hc < SPRITE_SCAN_END + 8) 
-                vid_addr <= sprite_attr_addr + 128 + {sprite_num[hc[2:0]], 1'b0};
+                vid_addr <= sprite_attr_addr + 128 + {sprite_num[hc_off[2:0]], 1'b0};
               if (hc >= SPRITE_SCAN_END + 2 && hc < SPRITE_SCAN_END + 10)
-                sprite_x[hc[3:0] - 2] <= vid_out;
+                sprite_x[hc_off[3:0] - 2] <= vid_out;
               // Read the pattern number values for the row
               if (hc >= SPRITE_SCAN_END + 8 && hc < SPRITE_SCAN_END + 16) 
-                vid_addr <= sprite_attr_addr + 128 + {sprite_num[hc[2:0]], 1'b1};
+                vid_addr <= sprite_attr_addr + 128 + {sprite_num[hc_off[2:0]], 1'b1};
               if (hc >= SPRITE_SCAN_END + 10 && hc < SPRITE_SCAN_END + 18)
-                sprite_pattern[hc[3:0] - 2] <= vid_out;
+                sprite_pattern[hc_off[3:0] - 2] <= vid_out;
               // Read the sprite bit planes for the row
               if (hc >= SPRITE_SCAN_END + 16 && hc < SPRITE_SCAN_END + 24)
                   vid_addr <= sprite_pattern_table_addr + (sprite_large ? {sprite_pat[7:1], sprite_lin, 2'b00} : {sprite_pat, sprite_lin[2:0], 2'b00});
               if (hc >= SPRITE_SCAN_END + 18 && hc < SPRITE_SCAN_END + 26)
-                  sprite_font[hc[3:0] - 2] <= vid_out;
+                  sprite_font[hc_off[3:0] - 2] <= vid_out;
               if (hc >= SPRITE_SCAN_END + 24 && hc < SPRITE_SCAN_END + 32)
                   vid_addr <= sprite_pattern_table_addr + (sprite_large ? {sprite_pat[7:1], sprite_lin, 2'b01} :  {sprite_pat, sprite_lin[2:0], 2'b01});
               if (hc >= SPRITE_SCAN_END + 26 && hc < SPRITE_SCAN_END + 34)
-                  sprite_font1[hc[3:0] - 2] <= vid_out;
+                  sprite_font1[hc_off[3:0] - 2] <= vid_out;
               if (hc >= SPRITE_SCAN_END + 32 && hc < SPRITE_SCAN_END + 40)
                   vid_addr <= sprite_pattern_table_addr + (sprite_large ? {sprite_pat[7:1], sprite_lin, 2'b10} : {sprite_pat, sprite_lin[2:0], 2'b10});
               if (hc >= SPRITE_SCAN_END + 34 && hc < SPRITE_SCAN_END + 42)
-                  sprite_font2[hc[3:0] - 2] <= vid_out;
+                  sprite_font2[hc_off[3:0] - 2] <= vid_out;
               if (hc >= SPRITE_SCAN_END + 40 && hc < SPRITE_SCAN_END + 48)
                   vid_addr <= sprite_pattern_table_addr + (sprite_large ? {sprite_pat[7:1], sprite_lin, 2'b11} : {sprite_pat, sprite_lin[2:0], 2'b11});
               if (hc >= SPRITE_SCAN_END + 42 && hc < SPRITE_SCAN_END + 50)
-                  sprite_font3[hc[3:0] - 2] <= vid_out;
+                  sprite_font3[hc_off[3:0] - 2] <= vid_out;
             end
           end else if (hc[0] == 1) begin
             // Look at up to 32 sprites
             if (vc[0] == 1) begin
               if (hc >= HA && hc < LEGACY_SPRITE_SCAN_END) begin
                 // Fetch y attribute
-                vid_addr <= sprite_attr_addr + {hc[5:1], 2'b0};
+                vid_addr <= sprite_attr_addr + {hc_off[5:1], 2'b0};
               end
               // Check if sprite is on the line
               if (hc >= HA + 2 && hc < LEGACY_SPRITE_SCAN_END + 2 && !sprites_done) begin
                  if (vid_out == 208) sprites_done <= 1;
                  else if (y32 >= sprite_sy && y32 < sprite_ey) begin
                    if (num_sprites < 4) begin
-                     sprite_num[num_sprites] <= hc[5:1] - 1;
+                     sprite_num[num_sprites] <= hc_off[5:1] - 1;
                      num_sprites <= num_sprites + 1;
                    end else begin
                      sprites_done <= 1;
                      if (sprite_limit_line) begin
                        sprite_overflow <= 1;
-                       spritex <= hc[5:1] - 5'd1;
+                       spritex <= hc_off[5:1] - 5'd1;
                      end
                    end
                 end
               end
               // Read the sprite attributes for the row
               if (hc >= LEGACY_SPRITE_SCAN_END && hc < LEGACY_SPRITE_ATTR_SCAN_END) 
-                vid_addr <= sprite_attr_addr + {sprite_num[hc[4:3]], hc[2:1]};
+                vid_addr <= sprite_attr_addr + {sprite_num[hc_off[4:3]], hc_off[2:1]};
               if (hc >= LEGACY_SPRITE_SCAN_END + 2 && hc < LEGACY_SPRITE_ATTR_SCAN_END + 2) begin
-                case ((hc[3:1] - 1) & 2'b11)
+                case ((hc_off[3:1] - 1) & 2'b11)
                   0: sprite_y[sprite_index] <= vid_out;
                   1: sprite_x[sprite_index] <= vid_out;
                   2: sprite_pattern[sprite_index] <= vid_out;
@@ -693,21 +723,21 @@ module video (
               if (hc >= LEGACY_SPRITE_ATTR_SCAN_END && hc < LEGACY_SPRITE_PATTERN_SCAN_END)
                 if (sprite_large) 
                   vid_addr <= sprite_pattern_table_addr + 
-                              {sprite_pattern[hc[2:1]][7:2],1'b0, sprite_row[hc[2:1]][3:0]};
+                              {sprite_pattern[hc_off[2:1]][7:2],1'b0, sprite_row[hc_off[2:1]][3:0]};
                 else
                   vid_addr <= sprite_pattern_table_addr + 
-                              {sprite_pattern[hc[2:1]], sprite_row[hc[2:1]][2:0]};
+                              {sprite_pattern[hc_off[2:1]], sprite_row[hc_off[2:1]][2:0]};
 
               if (hc >= LEGACY_SPRITE_ATTR_SCAN_END + 2 && hc < LEGACY_SPRITE_PATTERN_SCAN_END + 2) 
-                sprite_font[hc[2:1]-1] <= vid_out;
+                sprite_font[hc_off[2:1]-1] <= vid_out;
       
               if (sprite_large) begin
                 if (hc >= LEGACY_SPRITE_PATTERN_SCAN_END  && hc < LEGACY_SPRITE_PATTERN2_SCAN_END) 
                   vid_addr <= sprite_pattern_table_addr + 
-                              {sprite_pattern[hc[2:1]][7:2],1'b1, sprite_row[hc[2:1]][3:0]};
+                              {sprite_pattern[hc_off[2:1]][7:2],1'b1, sprite_row[hc_off[2:1]][3:0]};
 
                 if (hc >= LEGACY_SPRITE_PATTERN_SCAN_END + 2 && hc < LEGACY_SPRITE_PATTERN2_SCAN_END + 2)
-                  sprite_font1[hc[2:1]-1] <= vid_out;
+                  sprite_font1[hc_off[2:1]-1] <= vid_out;
               end
             end
           end
