@@ -1,0 +1,4 @@
+# IcePi Zero rev 1.4 and later only. Pulling PROGRAMN low reloads the
+# bitstream from SPI flash. Open drain, as in the vendor v1.4 constraints.
+LOCATE COMP "programn" SITE "N12";
+IOBUF  PORT "programn" IO_TYPE=LVCMOS33 OPENDRAIN=ON PULLMODE=UP;

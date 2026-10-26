@@ -1,7 +1,8 @@
 `default_nettype none
 // IcePi Zero rev 1.2. The 50 MHz oscillator is the PLL reference.
 // The NTSC build keeps a 25 MHz pixel clock. The PAL build (yosys -DPAL)
-// uses 27 MHz for VIC 17 and does not switch standards at runtime.
+// uses 27 MHz for VIC 17. Each is its own bitstream. Holding SELECT for
+// 2 s reloads the other one from flash (multiboot via PROGRAMN, REV14=1).
 module icepi_zero_top
 (
   input         clk,
@@ -44,9 +45,17 @@ module icepi_zero_top
   inout  [15:0] sdram_d,
 
   output [4:0]  led
+`ifdef PROGRAMN
+  ,
+  // Rev 1.4 and later. Low reloads the bitstream from flash.
+  output        programn
+`endif
 );
 
   wire [27:0] gp_unused, gn_unused;
+`ifndef PROGRAMN
+  wire        programn;  // rev 1.2/1.3: not routed, SELECT hold has no effect
+`endif
   wire [7:0] sms_led;
 
   // sms does not drive CKE. Hold the chip enabled.
@@ -93,7 +102,8 @@ module icepi_zero_top
     .sdram_d(sdram_d),
     .gp(gp_unused),
     .gn(gn_unused),
-    .led(sms_led)
+    .led(sms_led),
+    .user_programn(programn)
   );
 
 endmodule

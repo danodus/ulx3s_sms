@@ -71,6 +71,13 @@ module sms
   output        oled_resn,
   // Leds
   output [7:0]  led
+`ifdef SYNTHESIS
+  ,
+  // Open-drain PROGRAMN. Held low after SELECT has been down for 2 s,
+  // which reloads the bitstream at the flash address that this image
+  // names as the next boot (the other video standard).
+  output        user_programn
+`endif
 );
 
   // I/O ports
@@ -442,8 +449,8 @@ module sms
   reg joypad2 = 1'b0;
 
   // The video standard is the bitstream. PAL is VIC 17 (312 SMS
-  // lines). NTSC is the 524-line raster. SELECT does not switch
-  // images; a reload from flash is not wired up.
+  // lines). NTSC is the 524-line raster. Holding SELECT for 2 s
+  // reloads the other bitstream from flash (multiboot via PROGRAMN).
 `ifdef PAL
   wire pal_mode = 1'b1;
 `else
@@ -516,6 +523,20 @@ module sms
   reg nmi_pad2 = 1'b0;
   reg sel1_down = 1'b0;
   reg sel2_down = 1'b0;
+  // SELECT held for 2 s switches the video standard by reloading the
+  // other bitstream. A pad must be seen released first, so a button
+  // still held across the reload does not bounce straight back.
+`ifdef PAL
+  localparam [25:0] SEL_HOLD_CLKS = 26'd54_000_000;
+`else
+  localparam [25:0] SEL_HOLD_CLKS = 26'd50_000_000;
+`endif
+  reg        sel1_armed = 1'b0;
+  reg        sel2_armed = 1'b0;
+  reg [25:0] sel1_hold = 26'd0;
+  reg [25:0] sel2_hold = 26'd0;
+  reg        reload_req = 1'b0;
+  assign user_programn = reload_req ? 1'b0 : 1'bz;
   // The HID host registers the pads on the USB clock, so two flops
   // close the crossing.
   reg [1:0] sta1_sync = 2'b0;
@@ -536,6 +557,10 @@ module sms
       nmi_pad2  <= 1'b0;
       sel1_down <= 1'b0;
       sel2_down <= 1'b0;
+      sel1_armed <= 1'b0;
+      sel2_armed <= 1'b0;
+      sel1_hold <= 26'd0;
+      sel2_hold <= 26'd0;
     end else begin
       if (sta1_sync[1] && !wait_sta1) begin
         wait_sta1 <= 1'b1;
@@ -555,8 +580,26 @@ module sms
         nmi_pad2  <= 1'b0;
       end
 
-      // SELECT returns to the menu on release. It does not switch
-      // the video standard; that is a separate bitstream.
+      // A short SELECT press returns to the menu on release. Held for
+      // 2 s, in a game or in the menu, it asserts PROGRAMN instead and
+      // the FPGA reloads the other video standard from flash.
+      if (!sel1_sync[1]) sel1_armed <= 1'b1;
+      if (!sel2_sync[1]) sel2_armed <= 1'b1;
+
+      if (sel1_sync[1] && sel1_armed && !reload_req) begin
+        sel1_hold <= sel1_hold + 26'd1;
+        if (sel1_hold == SEL_HOLD_CLKS)
+          reload_req <= 1'b1;
+      end else
+        sel1_hold <= 26'd0;
+
+      if (sel2_sync[1] && sel2_armed && !reload_req) begin
+        sel2_hold <= sel2_hold + 26'd1;
+        if (sel2_hold == SEL_HOLD_CLKS)
+          reload_req <= 1'b1;
+      end else
+        sel2_hold <= 26'd0;
+
       if (sel1_sync[1] && load_done) begin
         sel1_down <= 1'b1;
       end else begin

@@ -31,25 +31,59 @@ VERILOG = icepi_zero_top.v \
 PIN_DEF = icepi_zero.lpf
 DEVICE ?= 25k
 PACKAGE ?= CABGA256
+
+# SPI flash layout. Power-up loads NTSC from address 0. Each image names
+# the other one as its next boot address (ECP5 multiboot), so holding
+# SELECT for 2 s, which pulls PROGRAMN low, swaps NTSC and PAL.
+NTSC_FLASH_ADDR = 0x000000
+PAL_FLASH_ADDR  = 0x200000
+
+# REV14=1 wires the PROGRAMN pin (N12), which exists on IcePi Zero rev 1.4
+# and later. On rev 1.2 and 1.3 N12 is another net, so it stays unused and
+# the SELECT hold cannot reload the FPGA.
+ifeq ($(REV14),1)
+PIN_DEF += icepi_zero_rev14.lpf
+EXTRA_DEFS = verilog_defaults -add -DPROGRAMN;
+else
+EXTRA_DEFS =
+endif
+
 # PAL=1 builds VIC 17 (720x576p at 50 Hz, 27 MHz) into bin_pal/.
 # The default is the NTSC raster, into bin/.
 ifeq ($(PAL),1)
 BUILDDIR = bin_pal
 NEXTPNR_FREQ = 27
-YOSYS_DEFS = verilog_defaults -add -DICEPI; verilog_defaults -add -DPAL;
+YOSYS_DEFS = verilog_defaults -add -DICEPI; verilog_defaults -add -DPAL; $(EXTRA_DEFS)
+BOOTADDR = $(NTSC_FLASH_ADDR)
 else
 BUILDDIR = bin
 NEXTPNR_FREQ = 25
-YOSYS_DEFS = verilog_defaults -add -DICEPI;
+YOSYS_DEFS = verilog_defaults -add -DICEPI; $(EXTRA_DEFS)
+BOOTADDR = $(PAL_FLASH_ADDR)
 endif
+
+OFL = openFPGALoader -c ft231X --pins=7:3:5:6
 
 compile: $(BUILDDIR)/toplevel.bit
 
 prog: $(BUILDDIR)/toplevel.bit
-	openFPGALoader -c ft231X --pins=7:3:5:6 $<
+	$(OFL) $<
 
+# Writes only this image, at its slot. The other slot must also be
+# programmed for the SELECT switch to work; see flash-all.
 flash: $(BUILDDIR)/toplevel.bit
-	openFPGALoader -c ft231X --pins=7:3:5:6 $< --write-flash
+ifeq ($(PAL),1)
+	$(OFL) --write-flash -o $(PAL_FLASH_ADDR) $<
+else
+	$(OFL) --write-flash -o $(NTSC_FLASH_ADDR) $<
+endif
+
+# Builds NTSC and PAL and writes both.
+flash-all:
+	$(MAKE) PAL=0 compile
+	$(MAKE) PAL=1 compile
+	$(OFL) --write-flash -o $(NTSC_FLASH_ADDR) bin/toplevel.bit
+	$(OFL) --write-flash -o $(PAL_FLASH_ADDR) bin_pal/toplevel.bit
 
 FWDIR = ../firmware/sdmenu
 FW_DEPS := $(FWDIR)/Makefile $(FWDIR)/ram.ld $(FWDIR)/crt0.S \
@@ -75,13 +109,13 @@ $(BUILDDIR)/toplevel.json: $(VERILOG) $(BUILDDIR)/firmware.hex $(BUILDDIR)/font8
 	yosys -p "$(YOSYS_DEFS) read_verilog -sv $(filter %.sv,$(VERILOG)); read_verilog $(filter %.v,$(VERILOG)); synth_ecp5 -top icepi_zero_top -json $@"
 
 $(BUILDDIR)/toplevel.config: $(PIN_DEF) $(BUILDDIR)/toplevel.json
-	nextpnr-ecp5 --$(DEVICE) --package $(PACKAGE) --speed 6 --timing-allow-fail --freq $(NEXTPNR_FREQ) --textcfg $@ --json $(filter-out $<,$^) --lpf $<
+	nextpnr-ecp5 --$(DEVICE) --package $(PACKAGE) --speed 6 --timing-allow-fail --freq $(NEXTPNR_FREQ) --textcfg $@ --json $(BUILDDIR)/toplevel.json $(addprefix --lpf ,$(PIN_DEF))
 
 $(BUILDDIR)/toplevel.bit: $(BUILDDIR)/toplevel.config
-	ecppack --compress $< $@
+	ecppack --compress --bootaddr $(BOOTADDR) $< $@
 
 clean:
 	rm -rf bin bin_pal
 
 .SECONDARY:
-.PHONY: compile clean prog flash
+.PHONY: compile clean prog flash flash-all

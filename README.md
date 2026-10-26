@@ -54,9 +54,15 @@ This builds the RV32 SD menu firmware, then synthesizes the NTSC bitstream into 
 make PAL=1 prog
 ```
 
-builds the PAL bitstream into `bin_pal/` and programs that instead. The two images are separate. SELECT does not switch between them.
+builds the PAL bitstream into `bin_pal/` and programs that instead. `prog` loads SRAM only, so power cycling returns to whatever is in flash.
 
-It currently defaults to an 85F board.
+```
+make flash-all
+```
+
+builds both images and writes NTSC to SPI flash at `0x000000` and PAL at `0x200000` (using `openFPGALoader -b ulx3s`). This replaces a bootloader at address 0, if one is installed. Each image is built with `ecppack --bootaddr` naming the other as the next boot (ECP5 multiboot). Hold SELECT on a gamepad for 2 seconds, in a game or in the menu, to pull `user_programn` low. The FPGA then reloads the other image, so you switch between NTSC and PAL. Power-up always starts in NTSC. A short SELECT press still returns to the ROM menu. `make flash` and `make PAL=1 flash` write a single slot.
+
+It currently defaults to an 85F board. The reload needs `user_programn` on ULX3S PCB v2.0.5 or later.
 
 ## IcePi Zero
 
@@ -66,15 +72,17 @@ cd icepi_zero
 make prog
 ```
 
-`make flash` writes the bitstream to SPI flash. `make PAL=1 prog` and `make PAL=1 flash` do the same for the PAL image in `bin_pal/`.
+`make flash` writes the NTSC bitstream to SPI flash at `0x000000`. `make PAL=1 prog` loads the PAL image from `bin_pal/`, and `make PAL=1 flash` writes it at `0x200000`. `make flash-all` builds and writes both.
+
+Holding SELECT for 2 seconds reloads the other image from flash (multiboot, as on ULX3S), but it needs the `PROGRAMN` pin, which only IcePi Zero rev 1.4 and later route to the FPGA (N12). Build with `REV14=1` (for example `make REV14=1 flash-all`) on those boards. On rev 1.2 and 1.3 the hold does nothing; program the image you want with `make prog` / `make PAL=1 prog`, or power cycle to return to NTSC.
 
 ## Gamepad Buttons
 
-Press START on the USB gamepad while a game is running to pause. SELECT returns to the ROM menu. The video standard is whichever bitstream was programmed. D4 stays lit on the PAL image. The PAL pixel clock is 27 MHz; NTSC stays at 25 MHz.
+Press START on the USB gamepad while a game is running to pause. A short SELECT press returns to the ROM menu. Holding SELECT for 2 seconds switches between the NTSC and PAL bitstreams in flash. The video standard is whichever bitstream is loaded. D4 stays lit on the PAL image. The PAL pixel clock is 27 MHz; NTSC stays at 25 MHz.
 
 ## USB Gamepad
 
-Press START on either gamepad while a game is running to pause. Press SELECT while a game is running to return to the SD card ROM menu. On IcePi Zero, controller 2 does the same. To run a European ROM, program the PAL bitstream (`make PAL=1 prog` or `make PAL=1 flash`).
+Press START on either gamepad while a game is running to pause. Press SELECT while a game is running to return to the SD card ROM menu. On IcePi Zero, controller 2 does the same. To run a European ROM, hold SELECT for 2 seconds to switch to the PAL bitstream (after `make flash-all`), or program it directly (`make PAL=1 prog`).
 
 ## Bugs
 
